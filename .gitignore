@@ -1,0 +1,7 @@
+*.[oa]
+*.so*
+*.apk
+service/webkey
+java/bin/*
+java/gen/*
+*.swp
