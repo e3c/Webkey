@@ -101,6 +101,11 @@ FILE *stderr = stderr;
 #define FB_DEVICE "/dev/graphics/fb0"
 #endif
 
+extern "C"
+{
+void *__dso_handle = NULL;
+}
+
 struct structfilename{
 	const char* name;
 };
