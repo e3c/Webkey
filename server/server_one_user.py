@@ -86,8 +86,7 @@ class connectionthread(Thread):
 
             username = firstline[14:p]
             random = firstline[p+1:q]
-            version = firstline[q+1:e]
-            print "register, username = "+username+", random = "+random+", version = "+version+ " " ;
+            print "register, username = "+username+", random = "+random+ " " ;
             if username != gusername and grandom != random:
                 self.trysendall("HTTP/1.1 200 OK\r\n\r\nUsername is already used.")
                 l+="Username is already used. "
@@ -105,7 +104,6 @@ class connectionthread(Thread):
         g = firstline[q+1:].find("/")+q+1
         e = firstline[g+1:].find("\r") + g+1
         random = firstline[p+1:q]
-        version = firstline[q+1:g]
         port = firstline[g+1:e]
 
         print "username from phone =",username
