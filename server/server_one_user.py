@@ -6,50 +6,72 @@ import sys
 from threading import Thread
 from threading import Condition
 
-connlist = [] # this list will contains the active connections from the phone
-lock = Condition() # connlist is protected by this lock
-gusername = None # this file works with only one user
-grandom = None # the random string to identify the phone
-lastknown = None # the last known address of the phone
-def appendconn(c):
-    lock.acquire()
-    try:
-        c.setsockopt( socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
-        c.setsockopt( socket.SOL_TCP, socket.TCP_KEEPCNT, 6)
-        c.setsockopt( socket.SOL_TCP, socket.TCP_KEEPIDLE, 180)
-        c.setsockopt( socket.SOL_TCP, socket.TCP_KEEPINTVL, 10)
-    except:
-        print "error in setting up keepalive"
-    connlist.append(c)
-    if len(connlist) > 3:
-        connlist.pop(0).close()
-    lock.notifyAll()
-    lock.release()
-def getconn():
-    exptime = time.time()+10
-    lock.acquire()
-    while len(connlist) == 0:
-        try:
-            lock.wait(10)
-        except RuntimeError:
-            lock.release()
-            return None
-        if exptime < time.time():
-            break
-    if len(connlist) == 0:
-        print "Got signal, but no connection"
-        lock.release()
-        return None
-    c = connlist.pop(0)
-    lock.release()
-    return c
-def closeconns():
-    lock.acquire()
-    while len(connlist):
-        connlist.pop().close()
-    lock.notifyAll()
-    lock.release()
+class user:
+    def __init__(self):
+        self.random = ''
+        self.connlist = []
+        self.lock = Condition()
 
+    def closeconns(self):
+        self.lock.acquire()
+        while len(self.connlist):
+            self.connlist.pop().close()
+        self.lock.notifyAll()
+        self.lock.release()
+
+    def appendconn(self, c):
+        self.lock.acquire()
+        try:
+            c.setsockopt( socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+            c.setsockopt( socket.SOL_TCP, socket.TCP_KEEPCNT, 6)
+            c.setsockopt( socket.SOL_TCP, socket.TCP_KEEPIDLE, 180)
+            c.setsockopt( socket.SOL_TCP, socket.TCP_KEEPINTVL, 10)
+        except Exception as e:
+            print "error in setting up keepalive ", e
+        self.connlist.append(c)
+        if len(self.connlist) > 3:
+            self.connlist.pop(0).close()
+        self.lock.notifyAll()
+        self.lock.release()
+    def getconn(self):
+        exptime = time.time()+10
+        self.lock.acquire()
+        while len(self.connlist) == 0:
+            try:
+                self.lock.wait(10)
+            except RuntimeError:
+                self.lock.release()
+                return None
+            if exptime < time.time():
+                break
+        if len(self.connlist) == 0:
+            print "Got signal, but no connection"
+            self.lock.release()
+            return None
+        c = self.connlist.pop(0)
+        self.lock.release()
+        return c
+
+class userlist:
+    def __init__(self):
+        self.users = {}
+        self.connlist = [] # this list will contains the active connections from the phone
+        self.lock = Condition() # connlist is protected by this lock
+
+    def get(self, name):
+        try:
+            return self.users[name]
+        except:
+            pass
+        return None
+
+    def add(self, name, random):
+        print "Adding new user: ", name, " random: ", random
+        u = user()
+        u.random = random
+        self.users[name] = u
+
+users = userlist()
 
 class connectionthread(Thread):
     def __init__(self,c):
@@ -75,7 +97,6 @@ class connectionthread(Thread):
         return True
 
     def phoneclient(self,firstline):
-        global gusername, grandom;
         print "PHONE ", firstline
         p = firstline.find("/")
         if p == -1: conn.close(); return
@@ -87,13 +108,11 @@ class connectionthread(Thread):
             username = firstline[14:p]
             random = firstline[p+1:q]
             print "register, username = "+username+", random = "+random+ " " ;
-            if username != gusername and grandom != random:
+
+            if users.get(username):
                 self.trysendall("HTTP/1.1 200 OK\r\n\r\nUsername is already used.")
-                l+="Username is already used. "
             else:
-                if not gusernames:
-                    gusername = username
-                    grandom = random
+                users.add(username, random)
                 self.trysendall("HTTP/1.1 200 OK\r\n\r\nOK")
             self.conn.close()
             return
@@ -107,12 +126,9 @@ class connectionthread(Thread):
         port = firstline[g+1:e]
 
         print "username from phone =",username
-        if username == gusername  and grandom == random:
-            appendconn(self.conn)
-        elif not gusername:
-            gusername = username
-            grandom = random
-            appendconn(self.conn)
+        if users.get(username) and users.get(username).random == random:
+            users.get(username).appendconn(self.conn)
+            return
         else:
             print "Wrong username or random"
             self.trysendall("stop")
@@ -120,8 +136,26 @@ class connectionthread(Thread):
             return
 
     def browserclient(self,firstline):
-        print "BROWSER ", firstline
-        data = firstline
+        print "BROWSER ", firstline[:firstline.find("\r\n")]
+        u = None
+        req = firstline[:firstline.find(' ')]
+        print "REQ is", req, len(req)
+        p = firstline[len(req)+2:].find("/")
+        s = firstline[len(req)+2:].find(" ")
+        if s < p:
+            p = s
+        print "P is ", p
+        username = firstline[len(req) + 2:p+len(req)+2]
+        print "Username:", username
+        u = users.get(username)
+
+        if u == None:
+            self.trysendall("HTTP/1.1 404 Not Found\r\n\r\nPhone is unknown\r\n")
+            self.conn.close()
+            return
+
+        data = req + " " + firstline[p+len(req)+2:]
+        print "REWRITTEN as", data[:data.find("\r\n")]
         data2 = ""
         while 1:
             e = data.find("\r\n\r\n")
@@ -165,7 +199,7 @@ class connectionthread(Thread):
             return
         c=None
         while 1:
-            c = getconn()
+            c = u.getconn()
             if c == None:
                 self.trysendall("HTTP/1.1 404 Not Found\r\n\r\nPhone is not online\r\n")
                 self.conn.close()
@@ -224,4 +258,5 @@ print "stopping"
 
 clientsock.shutdown(socket.SHUT_RDWR)
 clientsock.close()
-closeconns()
+for u in userlist:
+    u.closeconns
