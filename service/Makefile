@@ -1,12 +1,13 @@
-CC := $(ANDROID_NDK)/toolchains/arm-linux-androideabi-4.4.3/prebuilt/linux-x86/bin/arm-linux-androideabi-gcc
-GCC := $(ANDROID_NDK)/toolchains/arm-linux-androideabi-4.4.3/prebuilt/linux-x86/bin/arm-linux-androideabi-g++
-STRIP := $(ANDROID_NDK)/toolchains/arm-linux-androideabi-4.4.3/prebuilt/linux-x86/bin/arm-linux-androideabi-strip
-AR := $(ANDROID_NDK)/toolchains/arm-linux-androideabi-4.4.3/prebuilt/linux-x86/bin/arm-linux-androideabi-ar
-RUNLIB := $(ANDROID_NDK)/toolchains/arm-linux-androideabi-4.4.3/prebuilt/linux-x86/bin/arm-linux-androideabi-ranlib
+TOOLCHAIN_PATH := $(ANDROID_NDK)/toolchains/arm-linux-androideabi-4.4.3/prebuilt/darwin-x86/bin/
+CC := ${TOOLCHAIN_PATH}/arm-linux-androideabi-gcc
+GCC := ${TOOLCHAIN_PATH}/arm-linux-androideabi-g++
+STRIP := ${TOOLCHAIN_PATH}/arm-linux-androideabi-strip
+AR := ${TOOLCHAIN_PATH}/arm-linux-androideabi-ar
+RUNLIB := ${TOOLCHAIN_PATH}/arm-linux-androideabi-ranlib
 
 CFLAGS := -I $(ANDROID_NDK)/platforms/android-3/arch-arm/usr/include/ -I $(ANDROID_NDK)/sources/cxx-stl/stlport/stlport/
 CFLAGS += -Wno-write-strings -mthumb -DANDROID -DNOCRYPT -DUSE_FILE32API 
-#CFLAGS += -L $(ANDROID_NDK)/platforms/android-3/arch-arm/usr/lib/ 
+CFLAGS += -L $(ANDROID_NDK)/platforms/android-3/arch-arm/usr/lib/ 
 CFLAGS += -lc -llog -lz -O2
 CFLAGS += -fno-exceptions -fno-short-enums
 #CFLAGS += -nostdlib
@@ -15,8 +16,10 @@ CXXFLAGS += -fno-rtti
 
 LDFLAGS := -Wl,-rpath-link=$(ANDROID_NDK)/platforms/android-3/arch-arm/usr/lib/,-dynamic-linker=/system/bin/linker
 LDFLAGS += -L $(ANDROID_NDK)/platforms/android-3/arch-arm/usr/lib/
-LDFLAGS += -lc -llog -lz
+LDFLAGS += -L  $(ANDROID_NDK)/sources/cxx-stl/stlport/libs/armeabi/
+LDFLAGS += -lc -llog -lz 
 LDFLAGS += -O2
+#LDFLAGS += -lstlport_shared
 
 LIBS := $(ANDROID_NDK)/sources/cxx-stl/stlport/libs/armeabi/libstlport_static.a
 LIBS += libjpeg.a
