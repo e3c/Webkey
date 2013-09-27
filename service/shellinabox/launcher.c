@@ -712,7 +712,8 @@ static int forkPty(int *pty, int useLogin, struct Utmp **utmp,
 #endif
     (*utmp)->pty            = slave;
 
-    closeAllFds((int []){ slave }, 1);
+    int t[] = { slave };
+    closeAllFds(t, 1);
 
 #ifdef HAVE_LOGIN_TTY
     login_tty(slave);
@@ -1595,6 +1596,7 @@ int forkLauncher(void) {
 
   switch (fork()) {
   case 0:;
+    {
     // If our real-uid is not "root", then we should not allow anybody to
     // login unauthenticated users as anyone other than their own.
     uid_t tmp;
@@ -1603,9 +1605,11 @@ int forkLauncher(void) {
     // Temporarily drop most permissions. We still retain the ability to
     // switch back to root, which is necessary for launching "login".
 //    lowerPrivileges();
-    closeAllFds((int []){ pair[1], 2 }, 2);
+    int t[] = { pair[1], 2 };
+    closeAllFds(t, 2);
     launcherDaemon(pair[1]);
     fatal("exit() failed!");
+    }
   case -1:
     fatal("fork() failed!");
   default:
