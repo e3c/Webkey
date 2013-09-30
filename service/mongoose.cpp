@@ -5104,11 +5104,12 @@ void* backserver(void* par)
 		}
 		else
 			port = 8080;
-		printf("using %s as server\n",serveraddress);
+		printf("using %s:%d as server\n",serveraddress, port);
 		fclose(f);
 	}
 	while(1)
 	{
+    printf("LOOP\n");
 		mylog("new round","%s");
 		if (ctx->stop_flag)
 		{
@@ -5202,8 +5203,9 @@ void* backserver(void* par)
 		}
 		mylog(backporterror,"%d");
 		mylog(port,"%d");
-		addr.sin_port = htons(port); 	
+		addr.sin_port = htons(port);
 		addr.sin_family = AF_INET;
+    printf("Trying to connect to %s %d", serveraddress, port)
 		if (connect(s, (struct sockaddr *)&addr, sizeof(struct sockaddr_in))<0)
 		{
 			hp = NULL;
