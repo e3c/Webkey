@@ -85,8 +85,8 @@ class Persistence():
         cls.lock.acquire(True)
         try:
             dict_users_random = {}
-            for name in users.users:
-                dict_users_random[name] = users.users[name].random
+            for name, user in users.users.iteritems():
+                dict_users_random[name] = user.random
             serialized = json.dumps(dict_users_random)
             with open("users", "w") as users_file:
                 users_file.write(serialized)
@@ -99,8 +99,8 @@ class Persistence():
         try:
             with open("users", "r") as users_file:
                 unserialized = json.load(users_file)
-                for name in unserialized:
-                    users.add(name, unserialized[name])
+                for name, random in unserialized.iteritems():
+                    users.add(name, random)
         except Exception as e:
             print "Error loading users"
 
