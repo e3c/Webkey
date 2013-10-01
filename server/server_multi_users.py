@@ -9,7 +9,7 @@ from threading import Lock
 from threading import Thread
 
 
-class user:
+class User(object):
     def __init__(self):
         self.random = ''
         self.connlist = []
@@ -56,7 +56,7 @@ class user:
         self.lock.release()
         return c
 
-class userlist:
+class UserList(object):
     def __init__(self):
         self.users = {}
         self.connlist = [] # this list will contains the active connections from the phone
@@ -71,13 +71,13 @@ class userlist:
 
     def add(self, name, random):
         print "Adding new user: ", name, " random: ", random
-        u = user()
+        u = User()
         u.random = random
         self.users[name] = u
         Persistence.save()
 
 
-class Persistence():
+class Persistence(object):
     lock = Lock()
 
     @classmethod
@@ -105,11 +105,11 @@ class Persistence():
             print "Error loading users"
 
 
-users = userlist()
+users = UserList()
 Persistence.load()
 
 
-class connectionthread(Thread):
+class ConnectionThread(Thread):
     def __init__(self,c):
         Thread.__init__(self)
         self.conn = c
@@ -279,7 +279,7 @@ while 1:
         conn, addr = clientsock.accept()
         print 'Connected by', addr
 #        conn.setsockopt( socket.SOL_SOCKET, socket.SO_SNDTIMEO, struct.pack('ii',30,0))
-        connectionthread(conn).start()
+        ConnectionThread(conn).start()
         #print i
     except KeyboardInterrupt:
         try:
