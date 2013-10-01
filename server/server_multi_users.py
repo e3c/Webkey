@@ -261,7 +261,7 @@ class connectionthread(Thread):
 
 
 HOST = ''
-PORT = 8080
+PORT = 9935
 if len(sys.argv) > 1:
     try:
         PORT = int(sys.argv[1])
