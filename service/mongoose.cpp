@@ -5075,38 +5075,39 @@ void* backserver(void* par)
 	if (pthread_cond_init(&backcond,0))
 		return 0;
 	struct hostent *hp = NULL;
-	backporterror = 0;
-	int PORT1 = 110;
-	int PORT2 = 80;
-	int port;
+	// backporterror = 0;
+	// int PORT1 = 110;
+	// int PORT2 = 80;
+	int port = 9935;
 	char serveraddress[128];
-	__u32 fallbackip = 0; 
-	fallbackip = 1745908944; //Our server's address
-	serverip = 1745908944; //Our server's address, no DNS resolving
-	printf("using webkey.cc\n");
-	strcpy(serveraddress,"webkey.cc");
-	port = PORT1;
-	FILE * f = fopen("/data/data/com.webkey/files/server.txt","r");
-	if (f)
-	{
-		fgets(serveraddress, sizeof(serveraddress), f);
-		if (serveraddress[strlen(serveraddress)-1]=='\n')
-			serveraddress[strlen(serveraddress)-1]=0;
-		if (serveraddress[strlen(serveraddress)-1]=='\r')
-			serveraddress[strlen(serveraddress)-1]=0;
-		int i = 0;
-		while (serveraddress[i] && serveraddress[i] != ':')
-			i++;
-		if (serveraddress[i])
-		{
-			port = getnum2(serveraddress+i+1);
-			serveraddress[i] = 0;
-		}
-		else
-			port = 8080;
-		printf("using %s:%d as server\n",serveraddress, port);
-		fclose(f);
-	}
+	// __u32 fallbackip = 0; 
+	// fallbackip = 1745908944; //Our server's address
+	// serverip = 1745908944; //Our server's address, no DNS resolving
+	printf("using on4today.com\n");
+	strcpy(serveraddress,"on4today.com");
+	// strcpy(serveraddress,"on4today.com");
+	// port = PORT1;
+	// FILE * f = fopen("/data/data/com.webkey/files/server.txt","r");
+	// if (f)
+	// {
+	// 	fgets(serveraddress, sizeof(serveraddress), f);
+	// 	if (serveraddress[strlen(serveraddress)-1]=='\n')
+	// 		serveraddress[strlen(serveraddress)-1]=0;
+	// 	if (serveraddress[strlen(serveraddress)-1]=='\r')
+	// 		serveraddress[strlen(serveraddress)-1]=0;
+	// 	int i = 0;
+	// 	while (serveraddress[i] && serveraddress[i] != ':')
+	// 		i++;
+	// 	if (serveraddress[i])
+	// 	{
+	// 		port = getnum2(serveraddress+i+1);
+	// 		serveraddress[i] = 0;
+	// 	}
+	// 	else
+	// 		port = 8080;
+	// 	printf("using %s:%d as server\n",serveraddress, port);
+	// 	fclose(f);
+	// }
 	while(1)
 	{
     printf("LOOP\n");
@@ -5170,58 +5171,59 @@ void* backserver(void* par)
 //		tv.tv_sec = 30;
 		setsockopt(s,SOL_SOCKET,SO_RCVTIMEO,(char*)&tv,sizeof(struct timeval));
 		struct sockaddr_in addr;
-		if (!hp && serverip == 0)
+		if (!hp)
 		{
 			if ((hp = gethostbyname(serveraddress)) == NULL)
 			{
-//				close(s);
-				printf("unable to resolve server address from mongoose.c, never mind, we continue\n");
-//				sleep(20);
-//				continue;
+				close(s);
+				printf("unable to resolve server address from mongoose.c, trying again in 20 seconds\n");
+				sleep(20);
+				continue;
 			}
 		}
-		if (hp)
-			bcopy ( hp->h_addr, &(addr.sin_addr.s_addr), hp->h_length);
-		else
-		{
-			addr.sin_addr.s_addr = serverip ? serverip : fallbackip;
-		}
-		mylog(backporterror,"%d");
-		mylog(port,"%d");
-		if (backporterror > 5)
-		{
-			serverip = 0;
-			if (port == PORT1)
-				port = PORT2;
-			else if (port == PORT2)
-			{
-				sleep(60);
-				port = PORT1;
-			}
-//			port = port==80?110:80;
-			backporterror = 0;
-		}
-		mylog(backporterror,"%d");
-		mylog(port,"%d");
+		bcopy ( hp->h_addr, &(addr.sin_addr.s_addr), hp->h_length);
+		// if (hp) {
+			// bcopy ( hp->h_addr, &(addr.sin_addr.s_addr), hp->h_length);
+		// else
+		// {
+			// addr.sin_addr.s_addr = serverip ? serverip : fallbackip;
+		// }
+		// mylog(backporterror,"%d");
+		// mylog(port,"%d");
+// 		if (backporterror > 5)
+// 		{
+// 			serverip = 0;
+// 			if (port == PORT1)
+// 				port = PORT2;
+// 			else if (port == PORT2)
+// 			{
+// 				sleep(60);
+// 				port = PORT1;
+// 			}
+// //			port = port==80?110:80;
+// 			backporterror = 0;
+// 		}
+		// mylog(backporterror,"%d");
+		// mylog(port,"%d");
 		addr.sin_port = htons(port);
 		addr.sin_family = AF_INET;
-    printf("Trying to connect to %s %d", serveraddress, port);
+    	printf("Trying to connect to %s %d", serveraddress, port);
 		if (connect(s, (struct sockaddr *)&addr, sizeof(struct sockaddr_in))<0)
 		{
 			hp = NULL;
-			serverip = 0;
+			// serverip = 0;
 			close(s);
 			printf("unable to connect to server from mongoose.c, ip = %u\n",addr.sin_addr.s_addr);
-			backporterror++;
+			// backporterror++;
 //			mac[0] = 0;
 			// try again with IP
-			addr.sin_addr.s_addr = fallbackip;
-			if (connect(s, (struct sockaddr *)&addr, sizeof(struct sockaddr_in)) < 0)
-			{
-				printf("still can't even with ip = %u\n",addr.sin_addr.s_addr);
-				sleep(15);
-				continue;
-			}
+			// addr.sin_addr.s_addr = fallbackip;
+			// if (connect(s, (struct sockaddr *)&addr, sizeof(struct sockaddr_in)) < 0)
+			// {
+			// 	printf("still can't even with ip = %u\n",addr.sin_addr.s_addr);
+			// 	sleep(15);
+			// 	continue;
+			// }
 		}
 		
 //		printf("connected to server %d, %d at port %d\n",backnumconn,backactmaxconn,port);
