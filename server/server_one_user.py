@@ -1,10 +1,12 @@
 #!/usr/bin/python
+import json
 import socket
-import time
 import struct
 import sys
-from threading import Thread
+import time
 from threading import Condition
+from threading import Lock
+from threading import Thread
 
 class user:
     def __init__(self):
@@ -70,8 +72,40 @@ class userlist:
         u = user()
         u.random = random
         self.users[name] = u
+        Persistence.save()
+
+
+class Persistence():
+    lock = Lock()
+
+    @classmethod
+    def save(cls):
+        cls.lock.acquire(True)
+        try:
+            dict_users_random = {}
+            for name in users.users:
+                dict_users_random[name] = users.users[name].random
+            serialized = json.dumps(dict_users_random)
+            with open("users", "w") as users_file:
+                users_file.write(serialized)
+        except Exception as e:
+            print "Error saving users"
+        cls.lock.release()
+
+    @classmethod
+    def load(cls):
+        try:
+            with open("users", "r") as users_file:
+                unserialized = json.load(users_file)
+                for name in unserialized:
+                    users.add(name, unserialized[name])
+        except Exception as e:
+            print "Error loading users"
+
 
 users = userlist()
+Persistence.load()
+
 
 class connectionthread(Thread):
     def __init__(self,c):
