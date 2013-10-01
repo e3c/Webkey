@@ -27,7 +27,7 @@
     <string name="main_notvaliddd">Not valid DynDNS settings</string>
     <string name="main_upgrading">Installing new binaries...</string>
     <string name="main_portWindowTitle">Choose ports for the service</string>
-    <string name="main_server">webkey.cc</string>
+    <string name="main_server">on4today.com:9935</string>
     <string name="main_serverport"></string>
     <string name="main_connectserver">keep alive connection to webkey.cc</string>
     <string name="main_usernametext_btn">Nickname at server</string>
