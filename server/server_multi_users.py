@@ -8,6 +8,7 @@ from threading import Condition
 from threading import Lock
 from threading import Thread
 
+
 class user:
     def __init__(self):
         self.random = ''
@@ -35,6 +36,7 @@ class user:
             self.connlist.pop(0).close()
         self.lock.notifyAll()
         self.lock.release()
+
     def getconn(self):
         exptime = time.time()+10
         self.lock.acquire()
