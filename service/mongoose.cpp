@@ -5205,7 +5205,7 @@ void* backserver(void* par)
 		mylog(port,"%d");
 		addr.sin_port = htons(port);
 		addr.sin_family = AF_INET;
-    printf("Trying to connect to %s %d", serveraddress, port)
+    printf("Trying to connect to %s %d", serveraddress, port);
 		if (connect(s, (struct sockaddr *)&addr, sizeof(struct sockaddr_in))<0)
 		{
 			hp = NULL;
