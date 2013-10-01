@@ -76,6 +76,10 @@ class UserList(object):
         self.users[name] = u
         Persistence.save()
 
+    def closeconns(self):
+        for name, user in self.users.iteritems():
+            user.closeconns()
+
 
 class Persistence(object):
     lock = Lock()
@@ -294,5 +298,5 @@ print "stopping"
 
 clientsock.shutdown(socket.SHUT_RDWR)
 clientsock.close()
-for u in userlist:
-    u.closeconns
+
+users.closeconns()
