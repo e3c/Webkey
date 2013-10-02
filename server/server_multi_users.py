@@ -124,6 +124,7 @@ class ConnectionThread(Thread):
         except:
             self.conn.close()
             return
+        firstline = firstline.replace("/remote/", "/")
         if firstline.startswith("GET /register_") or firstline.startswith("WEBKEY"):
             self.phoneclient(firstline)
         else:
