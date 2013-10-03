@@ -35,12 +35,20 @@ import java.net.URL;
 import java.net.URLConnection;
 import java.util.Random;
 
+import javax.net.ssl.HttpsURLConnection;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.TrustManager;
+
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpResponse;
 import org.apache.http.client.HttpClient;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPost;
+import org.apache.http.conn.scheme.Scheme;
+import org.apache.http.conn.scheme.SchemeRegistry;
+import org.apache.http.conn.ssl.SSLSocketFactory;
 import org.apache.http.impl.client.DefaultHttpClient;
+import org.apache.http.impl.conn.SingleClientConnManager;
 import org.xml.sax.InputSource;
 
 import android.app.Notification;
@@ -217,30 +225,32 @@ HttpConnectionParams.setSoTimeout(httpParameters, timeoutSocket);
 	
 	public String registerusername(String serveraddr,String uname,String versionName){
 		InputStream is = null;
+
 		try{
-//			Log.d(TAG,"connecting:"+serveraddr);
-			HttpGet httpGet = new HttpGet("http://"+serveraddr+"/register_"+uname+"/"+random+"/"+versionName);
-HttpParams httpParameters = new BasicHttpParams();
-int timeoutConnection = 500;
-HttpConnectionParams.setConnectionTimeout(httpParameters, timeoutConnection);
-int timeoutSocket = 1000;
-HttpConnectionParams.setSoTimeout(httpParameters, timeoutSocket);
-			HttpClient httpclient = new DefaultHttpClient(httpParameters);
+			HttpGet httpGet = new HttpGet("https://"+serveraddr+"/register_"+uname+"/"+random+"/"+versionName);
+
+			HttpParams httpParameters = new BasicHttpParams();
+            int timeoutConnection = 500;
+            HttpConnectionParams.setConnectionTimeout(httpParameters, timeoutConnection);
+            int timeoutSocket = 1000;
+            HttpConnectionParams.setSoTimeout(httpParameters, timeoutSocket);
+
+            SchemeRegistry schemeRegistry = new SchemeRegistry();
+            schemeRegistry.register(new Scheme("https", SSLSocketFactory.getSocketFactory(), 9935));
+            SingleClientConnManager mgr = new SingleClientConnManager(httpParameters, schemeRegistry);
+
+			HttpClient httpclient = new DefaultHttpClient(mgr, httpParameters);
 			HttpResponse response = httpclient.execute(httpGet);
 			is = response.getEntity().getContent();
 			StringBuffer b = new StringBuffer();
+
 			int ch;
-						
 			while ((ch = is.read()) != -1) {
 				b.append((char) ch);
 			}
-			String s = b.toString();
-			//Log.d(TAG,s);
-//			Log.d(TAG,"response:"+s);
-//			Log.d(TAG,"response length:"+s.length());
-			return s;
+
+			return b.toString();
 		}catch(Exception e){
-			//e.printStackTrace();
 			return "error";
 		}
 	}
