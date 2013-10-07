@@ -298,9 +298,9 @@ public class WebkeyTab extends Activity implements OnClickListener{
 			    	}
 			    	
 			    	if (prefs.getBoolean("server",false) && serverUsername.length() > 0)
-			    		iptext += "http://"+this.getString(R.string.main_server)+this.getString(R.string.main_serverport)+"/"+serverUsername;
+			    		iptext += "https://"+this.getString(R.string.main_server)+this.getString(R.string.main_serverport)+"/"+serverUsername + "/";
 			    	else
-			    		iptext += this.getString(R.string.main_serverreason)+" "+this.getString(R.string.main_server); 
+			    		iptext += this.getString(R.string.main_serverreason)+" "+this.getString(R.string.main_server);
 
 			    	ipText.setText(iptext);
 //			    	TextView netTestInfo = (TextView) findViewById(R.id.nettest);
