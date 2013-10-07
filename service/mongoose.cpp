@@ -459,6 +459,7 @@ struct ssl_func {
 #define SSL_load_error_strings (* (void (*)(void)) ssl_sw[15].ptr)
 #define SSL_CTX_use_certificate_chain_file \
   (* (int (*)(SSL_CTX *, const char *)) ssl_sw[16].ptr)
+#define SSLv23_client_method (* (SSL_METHOD * (*)(void)) ssl_sw[17].ptr)
 
 #define CRYPTO_num_locks (* (int (*)(void)) crypto_sw[0].ptr)
 #define CRYPTO_set_locking_callback \
@@ -502,6 +503,7 @@ static struct ssl_func ssl_sw[] = {
   {"SSL_CTX_free",  NULL},
   {"SSL_load_error_strings", NULL},
   {"SSL_CTX_use_certificate_chain_file", NULL},
+  {"SSLv23_client_method", NULL},
   {NULL,    NULL}
 };
 
@@ -597,7 +599,8 @@ static const char *config_options[] = {
 
 struct mg_context {
   int stop_flag;                // Should we stop event loop
-  SSL_CTX *ssl_ctx;             // SSL context
+  SSL_CTX *ssl_ctx;             // SSL context used to receive connections
+  SSL_CTX *ssl_ctx_client; 		// SSL context used to establish connections
   char *config[NUM_OPTIONS];    // Mongoose configuration parameters
   mg_callback_t user_callback;  // User-defined callback function
 
@@ -4434,6 +4437,10 @@ static void free_context(struct mg_context *ctx) {
   if (ctx->ssl_ctx != NULL) {
     SSL_CTX_free(ctx->ssl_ctx);
   }
+
+  if (ctx->ssl_ctx_client != NULL) {
+  	SSL_CTX_free(ctx->ssl_ctx_client);
+  }
 #ifndef NO_SSL
   if (ssl_mutexes != NULL) {
     free(ssl_mutexes);
@@ -4831,6 +4838,31 @@ backward_connection(struct mg_context *ctx,int s,char** server_username, char** 
 	(void) memset(&conn, 0, sizeof(conn));
 	conn.client.sock = s;
 	conn.ctx = ctx;
+
+	conn.ctx->ssl_ctx_client = SSL_CTX_new(SSLv23_client_method());
+
+	if (conn.ctx->ssl_ctx_client == NULL) {
+		printf("Error creating SSL Context\n");
+		return;
+	}
+
+	conn.ssl = SSL_new(conn.ctx->ssl_ctx_client);
+
+	if (conn.ssl == NULL) {
+		printf("Error creating SSL Handler\n");
+		return;
+	}
+
+	if (SSL_set_fd(conn.ssl, s) != 1) {
+		printf("Error setting file descriptor\n");
+		return;
+	}
+
+	if (SSL_connect(conn.ssl) != 1) {
+		printf("Error handshaking with the server\n");
+		return;
+	}
+
 	char tmp[512];
 	strcpy(tmp,"WEBKEY ");
 	strcat(tmp,*server_username);
