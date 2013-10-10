@@ -409,11 +409,15 @@ public class WebkeyTab extends Activity implements OnClickListener{
 			    boolean webkeyupgrade = false;
 
 				webkeyupgrade = binIO.unpackSingleFile("bin", "webkey", path);
-			    	Log.d(TAG,"unpack webkey");   
-		    	
+			    	Log.d(TAG,"unpack webkey");
+
 			    binIO.delDir(new File(path+"/plugins"));
 			    binIO.delDir(new File(path+"/client"));
-				if(webkeyupgrade && binIO.openAssets("webkey", "", path) &&
+
+			    File certsDir = new File(path, "certs");
+                certsDir.mkdir();
+
+                if(webkeyupgrade && binIO.openAssets("webkey", "", path) &&
 					binIO.chmod775("webkey") &&
 					binIO.chmod775("sqlite3") &&
 					binIO.chmod775("openssl") &&
@@ -424,7 +428,21 @@ public class WebkeyTab extends Activity implements OnClickListener{
 					mHandler.sendEmptyMessage(MSG_UPGRADE_FAILED);
 					upgrade_failed = true;
 				}
-				
+
+                if (certsDir.exists()) {
+                    File cacertsDir = new File("/etc/security/cacerts/");
+
+    				for (File file : cacertsDir.listFiles()) {
+    				    BinIO.copyFile(file, certsDir.getAbsolutePath() + "/" + file.getName());
+    				}
+
+    				binIO.expandFilesFromFolder("certs", certsDir.getAbsolutePath());
+                } else {
+                    Log.d(TAG,"failed");
+                    mHandler.sendEmptyMessage(MSG_UPGRADE_FAILED);
+                    upgrade_failed = true;
+                }
+
 				if(!binIO.rootCheck()){
 					mHandler.sendEmptyMessage(MSG_ROOT_FAILED);
 				}

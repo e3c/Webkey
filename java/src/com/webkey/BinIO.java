@@ -27,6 +27,8 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
+
 import android.content.Context;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
@@ -114,6 +116,60 @@ public class BinIO {
 		}
 	}
 	
+	public static boolean copyFile(File source, String destPath) {
+	    InputStream in = null;
+	    OutputStream out = null;
+
+	    try {
+            in = new FileInputStream(source);
+            out = new FileOutputStream(destPath);
+
+            byte[] buf = new byte[1024];
+
+            int len;
+            while ((len = in.read(buf)) > 0) {
+                out.write(buf, 0, len);
+            }
+
+            in.close();
+            out.close();
+
+            return true;
+        } catch (Exception e) {
+
+        }
+
+	    try {
+	        if (in != null) in.close();
+        } catch (Exception e) {
+
+        }
+
+	    try {
+	        if (out != null) out.close();
+        } catch (Exception e) {
+
+        }
+
+	    return false;
+	}
+
+	public boolean expandFilesFromFolder(String sourcePath, String extractPath) {
+	    try {
+	        String[] assets = assetManager.list(sourcePath);
+
+	        for (String file : assets) {
+	            unpackSingleFile(sourcePath, file, extractPath);
+	        }
+
+	        return true;
+	    } catch (Exception e) {
+	        
+	    }
+
+	    return false;
+	}
+
     private boolean unpack(String path, String filename, InputStream is, String targetPath){
         (new File(targetPath)).mkdirs();
 

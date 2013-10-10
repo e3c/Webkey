@@ -399,7 +399,9 @@ static const char *http_500_error = "Internal Server Error";
 typedef struct ssl_st SSL;
 typedef struct ssl_method_st SSL_METHOD;
 typedef struct ssl_ctx_st SSL_CTX;
-
+typedef struct ssl_x509_ctx X509_STORE_CTX;
+typedef struct ssl_verify_callback SSL_VERIFY_METHOD;
+#define SSL_VERIFY_PEER 0x01
 
 static SSL_CTX* ssl_ctx_client;
 
@@ -460,6 +462,10 @@ struct ssl_func {
 #define SSL_CTX_use_certificate_chain_file \
   (* (int (*)(SSL_CTX *, const char *)) ssl_sw[16].ptr)
 #define SSLv23_client_method (* (SSL_METHOD * (*)(void)) ssl_sw[17].ptr)
+#define SSL_CTX_load_verify_locations (* (int (*)(SSL_CTX *, \
+  		const char *, const char *)) ssl_sw[18].ptr)
+#define SSL_CTX_set_verify (* (void (*)(SSL_CTX *, int, SSL_VERIFY_METHOD *)) ssl_sw[19].ptr)
+#define SSL_CTX_set_verify_depth (* (void (*)(SSL_CTX *, int)) ssl_sw[20].ptr)
 
 #define CRYPTO_num_locks (* (int (*)(void)) crypto_sw[0].ptr)
 #define CRYPTO_set_locking_callback \
@@ -504,6 +510,9 @@ static struct ssl_func ssl_sw[] = {
   {"SSL_load_error_strings", NULL},
   {"SSL_CTX_use_certificate_chain_file", NULL},
   {"SSLv23_client_method", NULL},
+  {"SSL_CTX_load_verify_locations", NULL},
+  {"SSL_CTX_set_verify", NULL},
+  {"SSL_CTX_set_verify_depth", NULL},
   {NULL,    NULL}
 };
 
@@ -4843,6 +4852,15 @@ backward_connection(struct mg_context *ctx,int s,char** server_username, char** 
 
 	if (conn.ctx->ssl_ctx_client == NULL) {
 		printf("Error creating SSL Context\n");
+		return;
+	}
+
+	SSL_CTX_set_verify(conn.ctx->ssl_ctx_client, SSL_VERIFY_PEER, NULL);
+
+	SSL_CTX_set_verify_depth(conn.ctx->ssl_ctx_client, 10);
+
+	if (SSL_CTX_load_verify_locations(conn.ctx->ssl_ctx_client, NULL, "/data/data/com.webkey/files/certs") != 1) {
+		printf("Error setting certificate path");
 		return;
 	}
 
