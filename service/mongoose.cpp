@@ -4848,22 +4848,6 @@ backward_connection(struct mg_context *ctx,int s,char** server_username, char** 
 	conn.client.sock = s;
 	conn.ctx = ctx;
 
-	conn.ctx->ssl_ctx_client = SSL_CTX_new(SSLv23_client_method());
-
-	if (conn.ctx->ssl_ctx_client == NULL) {
-		printf("Error creating SSL Context\n");
-		return;
-	}
-
-	SSL_CTX_set_verify(conn.ctx->ssl_ctx_client, SSL_VERIFY_PEER, NULL);
-
-	SSL_CTX_set_verify_depth(conn.ctx->ssl_ctx_client, 10);
-
-	if (SSL_CTX_load_verify_locations(conn.ctx->ssl_ctx_client, NULL, "/data/data/com.webkey/files/certs") != 1) {
-		printf("Error setting certificate path");
-		return;
-	}
-
 	conn.ssl = SSL_new(conn.ctx->ssl_ctx_client);
 
 	if (conn.ssl == NULL) {
@@ -5189,6 +5173,29 @@ void* backserver(void* par)
 		mylog(*server,"%d");
 		mylog(backstop,"%d");
 		
+		if (ctx->ssl_ctx_client == NULL) {
+			printf("Creating SSL Client context\n");
+
+			ctx->ssl_ctx_client = SSL_CTX_new(SSLv23_client_method());
+
+			if (ctx->ssl_ctx_client == NULL) {
+				printf("Error creating SSL Context\n");
+				continue;
+			}
+
+			SSL_CTX_set_verify(ctx->ssl_ctx_client, SSL_VERIFY_PEER, NULL);
+
+			SSL_CTX_set_verify_depth(ctx->ssl_ctx_client, 10);
+
+			if (SSL_CTX_load_verify_locations(ctx->ssl_ctx_client, NULL,
+					"/data/data/com.webkey/files/certs") != 1) {
+				printf("Error setting certificate path\n");
+				SSL_CTX_free(ctx->ssl_ctx_client);
+				ctx->ssl_ctx_client = NULL;
+				continue;
+			}
+		}
+
 		if (!*server_username || !*server_random || !*server || strlen(*server_username)==0 || backstop)
 		{
 			mylog("sleeping 5 sec","%s");
