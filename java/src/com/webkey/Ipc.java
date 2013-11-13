@@ -81,7 +81,7 @@ public class Ipc {
 	public Ipc(Context context){
 		_context = context;
 		SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
-		port = prefs.getString("port", "80");
+		port = prefs.getString("port", "81");
 		sslport = prefs.getString("sslport", "443");
 		
 		random = prefs.getString("random", "");
@@ -110,7 +110,7 @@ public class Ipc {
 		InputStream is = null;
 		try{
 			SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(_context);
-			port = prefs.getString("port", "80");
+			port = prefs.getString("port", "81");
 			HttpGet httpGet = new HttpGet("http://127.0.0.1:"+port+"/"+url);
 HttpParams httpParameters = new BasicHttpParams();
 int timeoutConnection = 500;
@@ -141,7 +141,7 @@ HttpConnectionParams.setSoTimeout(httpParameters, timeoutSocket);
 		try{
 			//Log.d(TAG,"http://127.0.0.1:"+port+"/"+authKey+url);
 			SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(_context);
-			port = prefs.getString("port", "80");
+			port = prefs.getString("port", "81");
 			HttpGet httpGet = new HttpGet("http://127.0.0.1:"+port+"/"+authKey+url);
 HttpParams httpParameters = new BasicHttpParams();
 int timeoutConnection = 500;
@@ -170,9 +170,9 @@ HttpConnectionParams.setSoTimeout(httpParameters, timeoutSocket);
 	
 	public void comBinAuth(String turl, String postData){
 		readAuthKey();
-		try{								
+		try{
 			SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(_context);
-			port = prefs.getString("port", "80");
+			port = prefs.getString("port", "81");
 			Socket s = new Socket("127.0.0.1",Integer.parseInt(port));
 		       
 			//outgoing stream redirect to socket
@@ -350,7 +350,7 @@ HttpConnectionParams.setSoTimeout(httpParameters, timeoutSocket);
 		try{
 
 		SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(_context);
-		port = prefs.getString("port", "80");
+		port = prefs.getString("port", "81");
 	        Socket s = new Socket("127.0.0.1",Integer.parseInt(port));
 	       
 	        //outgoing stream redirect to socket
@@ -376,7 +376,7 @@ HttpConnectionParams.setSoTimeout(httpParameters, timeoutSocket);
 		try {
 //			Log.d("Webkey_java: ","get "+"http://127.0.0.1:"+port+"/"+authKey+"phonegetchatmessage_"+ID);
 			SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(_context);
-			port = prefs.getString("port", "80");
+			port = prefs.getString("port", "81");
 			URL url = new URL("http://127.0.0.1:"+port+"/"+authKey+"phonegetchatmessage_"+ID);
 			//HttpGet httpGet = new HttpGet("http://127.0.0.1:"+port+"/"+url);
 			return new InputSource(url.openStream());

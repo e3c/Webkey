@@ -55,7 +55,7 @@
 	<string name="main_control">Control</string>
 	<string name="main_usersettings_btn">Users\' settings</string>
 	<string name="main_progress">Working...</string>
-	<string name="main_port">HTTP port     (default: 80)</string>
+	<string name="main_port">HTTP port     (default: 81)</string>
 	<string name="main_sslport">HTTPS (SSL) port     (default: 443)</string>
 	<string name="main_rootfailed">The phone is not rooted or have not "su" program.</string>
 	
