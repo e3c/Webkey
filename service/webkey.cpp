@@ -416,23 +416,6 @@ signal_handler(int sig_num)
                 exit_flag = sig_num;
 }
 
-struct MESSAGE
-{
-	std::string user;
-	time_t timestamp;
-	std::string message;
-};
-
-static time_t chat_random;
-static std::vector<MESSAGE> chat_messages;
-static std::map<std::string,int> chat_readby;
-static std::map<std::string,int> chat_readby_real;
-static std::map<std::string,int> chat_readby_count;
-static int chat_count;
-static pthread_mutex_t chatmutex;
-static pthread_cond_t chatcond;
-
-
 volatile static bool wakelock;
 volatile static time_t wakelock_lastused;
 static pthread_mutex_t wakelockmutex;
@@ -1086,10 +1069,8 @@ void clear(bool exit = true)
 		pthread_mutex_destroy(&netmutex);
 		pthread_mutex_destroy(&initfbmutex);
 		pthread_mutex_destroy(&uinputmutex);
-		pthread_mutex_destroy(&chatmutex);
 		pthread_mutex_destroy(&wakelockmutex);
 		pthread_cond_destroy(&diffcond);
-		pthread_cond_destroy(&chatcond);
 		pthread_cond_destroy(&diffstartcond);
 		for(i=0; i < sessions.size(); i++)
 		{
@@ -1961,267 +1942,6 @@ void init_touch()
 		return;
 	}
 	use_uinput_mouse = true;
-}
-
-static void savechat()
-{
-	FILE* f = fo("chat.txt","w");
-	int i;
-	for (i = 0; i < chat_messages.size(); i++)
-		fprintf(f,"%s%c%d%c%s%c",chat_messages[i].user.c_str(),0,chat_messages[i].timestamp,0,chat_messages[i].message.c_str(),0);
-	fprintf(f,"%c",0);
-	for (std::map<std::string,int>::iterator it = chat_readby.begin(); it != chat_readby.end(); it++)
-		fprintf(f,"%s%c%d%c",it->first.c_str(),0,it->second,0);
-	fprintf(f,"%c",0);
-	fclose(f);
-	chmod((dir+"chat.txt").c_str(), S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP);
-	chown((dir+"chat.txt").c_str(), info.st_uid, info.st_gid);
-	chmod((dir+"chat.txt").c_str(), S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP);
-}
-
-static void loadchat()
-{
-	chat_messages.clear();
-	chat_readby.clear();
-	chat_readby_real.clear();
-	std::string longname = dir + "chat.txt";
-	FILE* f = fopen(longname.c_str(),"r");
-	if (!f)
-		return;
-	int i;
-
-	fseek (f , 0 , SEEK_END);
-	int lSize = ftell (f);
-	rewind (f);
-	char* buff = new char[lSize+1];
-	if (!buff)
-	{
-		fclose(f);
-		return;
-	}
-	fread(buff,1,lSize,f);
-
-	i = 0;
-	while(buff[i] && i < lSize)
-	{
-		MESSAGE toload;
-		toload.user = buff+i;
-		while (buff[i] && i < lSize)
-			i++;
-		if (i < lSize)
-			i++;
-		toload.timestamp = getnum(buff+i);
-		while (buff[i] && i < lSize)
-			i++;
-		if (i < lSize)
-			i++;
-		toload.message = buff+i;
-		while (buff[i] && i < lSize)
-			i++;
-		if (i < lSize)
-			i++;
-		chat_messages.push_back(toload);
-	}
-	if (i < lSize)
-		i++;
-	while(buff[i] && i < lSize)
-	{
-		std::string q;
-		int w;
-		q = buff+i;
-		while (buff[i] && i < lSize)
-			i++;
-		if (i < lSize)
-			i++;
-		w = getnum(buff+i);
-		while (buff[i] && i < lSize)
-			i++;
-		if (i < lSize)
-			i++;
-		chat_readby[q] = w;
-		chat_readby_real[q] = w;
-	}
-
-	fclose(f);
-}
-
-static void
-getchatmessage(struct mg_connection *conn,
-                const struct mg_request_info *ri, void *data)
-{
-	if (ri->permissions != PERM_ROOT && (ri->permissions&PERM_CHAT)==0 && ri->remote_ip!=2130706433)
-		return;
-	if (exit_flag)
-		return;
-	int n = strlen(ri->uri);
-	int i = 0;
-	while (i<n && ri->uri[i] != '_') i++;
-	i++;
-	int random = getnum(ri->uri+i);
-	int pos = -1;
-	while (i<n && ri->uri[i] != '_') i++;
-	i++;
-	if (i < n)       	
-		pos = getnum(ri->uri+i);
-	int countpos = -1;
-	while (i<n && ri->uri[i] != '_') i++;
-	i++;
-	if (i < n)       	
-		countpos = getnum(ri->uri+i);
-	std::string username;
-	if (strcmp(ri->remote_user,"JAVA_CLIENT")==0)
-		username = "phone";
-	else
-		username = ri->remote_user;
-	pthread_mutex_lock(&chatmutex);
-	int count = chat_readby[username];
-	int count_real = chat_readby_real[username];
-	if (random != chat_random)
-	{
-		count = 0;
-		count_real = 0;
-	}
-	if (count != count_real)
-	{
-		chat_count++;
-		chat_readby[username] = count_real;
-		count = count_real;
-		pthread_cond_broadcast(&chatcond);
-		savechat();
-	}
-	if (pos == -1)
-		pos = count;
-	if (countpos == -1)
-		countpos = chat_readby_count[username];
-	if (chat_messages.size() == pos && random == chat_random && chat_count == countpos)
-	{
-		if (!exit_flag)
-			pthread_cond_wait(&chatcond,&chatmutex);
-	}
-	if (random != chat_random)
-		pos = 0;
-	char buff[LINESIZE];
-	std::map<int,int> sent;
-	send_ok(conn,"Content-Type: text/xml; charset=UTF-8");
-	mg_printf(conn,"<chat><readbypos>%d</readbypos><id>%d</id>\n",chat_count,chat_random);
-	for (i = pos; i < chat_messages.size(); i++)
-	{
-		MESSAGE* m = &(chat_messages[i]);
-		mg_printf(conn,"<message>");
-		mg_printf(conn,"<user>%s</user>",m->user.c_str());
-		mg_printf(conn,"<time>%d</time>",m->timestamp);
-		convertxml(buff,m->message.c_str());
-		mg_printf(conn,"<data>%s</data>",buff);
-		mg_printf(conn,"</message>\n");
-	}
-	if (pos < chat_messages.size())
-	{
-		//chat_count++;
-		chat_readby_real[username] = chat_messages.size();
-		//pthread_cond_broadcast(&chatcond);
-		//savechat();
-	}
-	chat_readby_count[username] = chat_count;
-	for (std::map<std::string,int>::iterator it = chat_readby.begin(); it != chat_readby.end(); it++)
-	{
-		if (it->first == username && username == "phone")
-			continue;
-		convertxml(buff,it->first.c_str());
-		mg_printf(conn,"<readby name=\"%s\">%d</readby>",buff,it->second);
-	}
-	mg_printf(conn,"</chat>\n");
-	pthread_mutex_unlock(&chatmutex);
-}
-static void
-phonegetchatmessage(struct mg_connection *conn,
-                const struct mg_request_info *ri, void *data)
-{
-	if (ri->remote_ip==2130706433)
-		getchatmessage(conn,ri,data);
-}
-static void
-writechatmessage(struct mg_connection *conn,
-                const struct mg_request_info *ri, void *data)
-{
-	if (ri->permissions != PERM_ROOT && (ri->permissions&PERM_CHAT)==0 && ri->remote_ip!=2130706433)
-		return;
-	lock_wakelock();
-	char* post_data;
-	int post_data_len;
-	read_post_data(conn,ri,&post_data,&post_data_len);
-	send_ok(conn);
-	if (post_data_len == 0)
-		return;
-	MESSAGE load;
-	if (strcmp(ri->remote_user,"JAVA_CLIENT")!=0)
-	{
-		load.user = ri->remote_user;
-	}
-	else
-	{
-		load.user = "phone";
-	}
-	load.timestamp = time(NULL);
-	load.message = std::string(post_data);
-
-	pthread_mutex_lock(&chatmutex);
-	chat_messages.push_back(load);
-	savechat();
-	pthread_cond_broadcast(&chatcond);
-	pthread_mutex_unlock(&chatmutex);
-	usleep(1500000);
-	pthread_mutex_lock(&chatmutex);
-	bool intent = false;
-	if (chat_messages.size() != chat_readby["phone"])
-		intent = true;
-	pthread_mutex_unlock(&chatmutex);
-	if (intent)
-		syst("/system/bin/am broadcast -a \"webkey.intent.action.Chat\" -n \"com.webkey/.ChatReceiver\"");
-	if (post_data)
-		delete[] post_data;
-}
-static void
-phonewritechatmessage(struct mg_connection *conn,
-                const struct mg_request_info *ri, void *data)
-{
-	if (ri->remote_ip==2130706433)
-		writechatmessage(conn,ri,data);
-}
-static void
-clearchatmessage(struct mg_connection *conn,
-                const struct mg_request_info *ri, void *data)
-{
-	if (ri->permissions != PERM_ROOT && (ri->permissions&PERM_CHAT)==0 && ri->remote_ip!=2130706433)
-		return;
-	lock_wakelock();
-//	MESSAGE load;
-//	if (ri->remote_user)
-//		load.user = ri->remote_user;
-//	else
-//		load.user = "phone";
-//	load.timestamp = time(NULL);
-//	load.message = "clear";
-	pthread_mutex_lock(&chatmutex);
-	chat_messages.clear();
-	chat_readby.clear();
-	chat_readby_real.clear();
-	chat_readby_count.clear();
-	struct timeval tv;
-	gettimeofday(&tv,0);
-	chat_random = time(NULL) + tv.tv_usec;
-	chat_count = 1;
-//	chat_messages.push_back(load);
-	savechat();
-	pthread_cond_broadcast(&chatcond);
-	pthread_mutex_unlock(&chatmutex);
-	send_ok(conn);
-}
-static void
-phoneclearchatmessage(struct mg_connection *conn,
-                const struct mg_request_info *ri, void *data)
-{
-	if (ri->remote_ip==2130706433)
-		clearchatmessage(conn,ri,data);
 }
 
 static void
@@ -9714,19 +9434,7 @@ static void *event_handler(enum mg_event event,
   else if (urlcompare(request_info->uri, "/sendbroadcast"))
 	sendbroadcast(conn, request_info, NULL);
   else if (urlcompare(request_info->uri, "/shellinabox*"))
-	shellinabox(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/getchatmessage_*"))
-	getchatmessage(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/writechatmessage"))
-	writechatmessage(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/clearchatmessage"))
-	clearchatmessage(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/phonegetchatmessage_*"))
-	phonegetchatmessage(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/phonewritechatmessage"))
-	phonewritechatmessage(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/phoneclearchatmessage"))
-	phoneclearchatmessage(conn, request_info, NULL);
+	shellinabox(conn, request_info, NULL);  
   else if (urlcompare(request_info->uri, "/adjust_light_*"))
 	adjust_light(conn, request_info, NULL);
   else if (urlcompare(request_info->uri, "/startrecord*"))
@@ -10086,8 +9794,6 @@ int main(int argc, char **argv)
 	pthread_mutex_init(&sl4amutex, NULL);
 	pthread_mutex_init(&netmutex, NULL);
 	pthread_mutex_init(&initfbmutex, NULL);
-	pthread_mutex_init(&chatmutex, NULL);
-	pthread_cond_init(&chatcond,0);
 	access_log(NULL,"service's started");
 	dirdepth = -1;
 	for (i = 0; i < strlen(argv[0]); i++)
@@ -10334,7 +10040,7 @@ int main(int argc, char **argv)
 	chown((dir+passfile).c_str(), info.st_uid, info.st_gid);
 	chmod((dir+passfile).c_str(), S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP);
 	char prot[512];
-	sprintf(prot,(std::string("/favicon.ico=,/flags_=,/javatest=,/gpsset=,/stop=,/dyndns=,/reread=,/test=,/sendbroadcast=,/phonegetchatmessage=,/phonewritechatmessage=,/phoneclearchatmessage=,/index.html=,/register=,/reganim.gif=,/js/jquery=,/=")+dir+passfile).c_str());
+	sprintf(prot,(std::string("/favicon.ico=,/flags_=,/javatest=,/gpsset=,/stop=,/dyndns=,/reread=,/test=,/sendbroadcast=,/index.html=,/register=,/reganim.gif=,/js/jquery=,/=")+dir+passfile).c_str());
 //        mg_set_option(ctx, "auth_realm", "Webkey");
 #ifdef __linux__
 //        mg_set_option(ctx, "error_log", "log.txt");
@@ -10464,9 +10170,6 @@ int main(int argc, char **argv)
 //	pthread_cond_init(&smscond,0);
 //	pthread_cond_init(&contactscond,0);
 //	admin_password = "";
-	chat_random = time(NULL) + tv.tv_usec;
-	chat_count = 1;
-	loadchat();
 	wakelock = true;	//just to be sure
 	unlock_wakelock(true);
 //	for (i = 0; i < 8; i++)
@@ -10569,12 +10272,6 @@ int main(int argc, char **argv)
 			}
 		}
 		//__android_log_print(ANDROID_LOG_INFO,"Webkey C++","debug: d = %d, dyndns = %d, host = %s, dyndns_base64 = %s",d,dyndns,dyndns_host.c_str(),dyndns_base64.c_str());
-		if (d==30 || d == 60)
-		{
-			pthread_mutex_lock(&chatmutex);
-			pthread_cond_broadcast(&chatcond);
-			pthread_mutex_unlock(&chatmutex);
-		}
 		if (d==60)
 		{
 			d=0;
@@ -10638,9 +10335,6 @@ int main(int argc, char **argv)
 	pthread_mutex_lock(&diffmutex);
 	pthread_cond_broadcast(&diffstartcond);
 	pthread_mutex_unlock(&diffmutex);
-	pthread_mutex_lock(&chatmutex);
-	pthread_cond_broadcast(&chatcond);
-	pthread_mutex_unlock(&chatmutex);
 	if (gps_active)
 		syst("/system/bin/am broadcast -a \"webkey.intent.action.GPS.STOP\" -n \"com.webkey/.GPS\"");
         (void) printf("Exiting on signal %d, "
