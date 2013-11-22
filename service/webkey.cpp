@@ -4489,8 +4489,6 @@ sendmenu(struct mg_connection *conn,
 	//if (ri->permissions == PERM_ROOT)
 	if (ri->permissions == PERM_ROOT || (ri->permissions&PERM_FILES) || (ri->permissions&PERM_PUBLIC))
 		mg_printf(conn,"<li><a href=\"files.html\" target=\"_top\"><span>%s</span></a></li> ",lang(ri,"Files").c_str());
-	if (ri->permissions == PERM_ROOT || (ri->permissions&PERM_SDCARD))
-		mg_printf(conn,"<li><a href=\"sdcard.html\" target=\"_top\"><span>%s</span></a></li> ",lang(ri,"Sdcard").c_str());
 //	mg_printf(conn,"<a href=\"help.html\" target=\"_top\">help</a> <a href=\"\" onclick=\"document.location.replace(document.location.href.replace(/:\\/\\//,':\\/\\/logout:logout@'))\"target=\"_top\">log out</a></div>");
 //	mg_printf(conn,"<a href=\"help.html\" target=\"_top\">help</a> <a href=\"logout\" onclick=\"try {document.execCommand('ClearAuthenticationCache');} catch (exception) {}; document.location=document.location.href.replace(/:\\/\\//,':\\/\\/logout:logout@')\" target=\"_top\">log out</a></div>");
 	mg_printf(conn,"<li><a href=\"help.html\" target=\"_top\"><span>%s</span></a></li> ",lang(ri,"Help").c_str());
@@ -6236,30 +6234,6 @@ status(struct mg_connection *conn,
 		mg_printf(conn,"%s</span>, ",lang(ri,"images").c_str());
 	}
 }
-static void
-sdcard(struct mg_connection *conn,
-                const struct mg_request_info *ri, void *data)
-{
-	if (ri->permissions != PERM_ROOT && (ri->permissions&PERM_SDCARD)==0)
-		return;
-	lock_wakelock();
-	access_log(ri,"browse sdcard");
-	send_ok(conn,"Content-Type: text/html; charset=UTF-8\r\nSet-Cookie: path=/");
-	FILE* f = fo("sdcard.html","rb");
-	if (!f)
-		return;
-	fseek (f , 0 , SEEK_END);
-	int lSize = ftell (f);
-	rewind (f);
-	char* filebuffer = new char[lSize+1];
-	if (!filebuffer)
-		return;
-	fread(filebuffer,1,lSize,f);
-	filebuffer[lSize] = 0;
-	mg_write(conn,filebuffer,lSize);
-	fclose(f);
-	delete[] filebuffer;
-}
 
 int remove_directory(const char *path)
 {
@@ -6523,7 +6497,6 @@ content(struct mg_connection *conn,
 	if (startswith(ri->query_string,"get_action=save_user_pref")
 	|| startswith(ri->query_string,"get_action=switch_repository"))
 	{
-		sdcard(conn,ri,data);
 		return;
 	}
 	std::string action = getoption(ri->query_string,"action=");
@@ -8346,7 +8319,6 @@ static void *event_handler(enum mg_event event,
 		  urlcompare(request_info->uri, "/net.html")||
 		  urlcompare(request_info->uri, "/sms.html")||
 		  urlcompare(request_info->uri, "/files.html")||
-		  urlcompare(request_info->uri, "/sdcard.html")||
 		  urlcompare(request_info->uri, "/terminal.html")||
 		  urlcompare(request_info->uri, "/js/webkey.js") ||
 		  urlcompare(request_info->uri, "/js/screenshot.js")
@@ -8400,8 +8372,6 @@ static void *event_handler(enum mg_event event,
 	emptyresponse(conn, request_info, NULL);
   else if (urlcompare(request_info->uri, "/passwords.txt*"))
 	emptyresponse(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/sdcard*"))
-	sdcard(conn, request_info, NULL);
   else if (urlcompare(request_info->uri, "/content.php*"))
 	content(conn, request_info, NULL);
   else if (urlcompare(request_info->uri, "/client/flash/content.php*"))
