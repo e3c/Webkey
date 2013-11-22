@@ -4490,7 +4490,6 @@ sendmenu(struct mg_connection *conn,
 		mg_printf(conn,"<li><a href=\"gps.html\" target=\"_top\"><span>%s</span></a></li> ",lang(ri,"GPS").c_str());
 	if (ri->permissions == PERM_ROOT || (ri->permissions&PERM_SMS_CONTACT))
 	{
-		mg_printf(conn,"<li><a href=\"calls.html\" target=\"_top\"><span>%s</span></a></li> ",lang(ri,"Call list").c_str());
 		mg_printf(conn,"<li><a href=\"net.html\" target=\"_top\"><span>%s</span></a></li> ",lang(ri,"Net").c_str());
 	}
 	if (ri->permissions == PERM_ROOT)
@@ -5813,144 +5812,6 @@ static void load_mimetypes()
 	}
 //        fflush(stdout);
 	fflush(NULL);
-	pthread_mutex_unlock(&popenmutex);
-}
-static void
-contactsxml(struct mg_connection *conn,
-                const struct mg_request_info *ri, void *data)
-{
-	if (ri->permissions != PERM_ROOT && (ri->permissions&PERM_SMS_CONTACT)==0)
-		return;
-	lock_wakelock();
-	access_log(ri,"read contact data");
-	send_ok(conn,"Content-Type: text/xml; charset=UTF-8");
-
-	std::string cmd = dir + "sqlite3 /data/data/com.android.providers.contacts/databases/contacts2.db \'select \"raw_contact_id\",\"mimetype_id\",\"data1\" from data where \"data1\" <> \"\" order by \"raw_contact_id\"\'";
-
-	char buff[LINESIZE];
-	char last[LINESIZE];
-	char conv[LINESIZE];
-	last[0] = 0;
-	int pos[3];
-	int i;
-	int j;
-	mg_printf(conn,"<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<people>\n");
-	bool first = true;
-	for (i = 0; i < 32; i++)
-		if (mimetypes[i].length())
-			break;
-	if (i==32)
-		load_mimetypes();
-	int lastmime = -1;
-	pthread_mutex_lock(&popenmutex);
-	fprintf(pipeout,"%s\n",cmd.c_str());
-	fflush(NULL);
-	while (fgets(buff, LINESIZE-1, pipein) != NULL)
-	{
-		if (strcmp(buff,"!!!END_OF_POPEN!!!\n")==0)
-			break;
-		i = 0;
-		j = 0;
-		while(buff[i] && buff[i] != '\n' && j < 2 && i < 255)
-		{
-			if (buff[i] == '|')
-			{
-				buff[i] = 0;
-				pos[j++] = i+1;
-			}
-			i++;
-		}
-		if (j<2)
-		{
-			if (lastmime != -1)
-				mg_printf(conn,"\n%s",convertxml(conv, buff));
-			continue;
-		}
-		if (lastmime != -1)
-			mg_printf(conn,"</%s>",mimetypes[lastmime].c_str());
-		while(buff[i]) i++;
-		if (i)
-			buff[i-1] = 0;
-		if (strcmp(buff,last))
-		{
-			strcpy(last,buff);
-			if (first)
-				mg_printf(conn,"<contact><id>%s</id>",buff);
-			else
-				mg_printf(conn,"</contact>\n<contact><id>%s</id>",buff);
-			first = false;
-		}
-		int n = getnum(buff+pos[0]);
-		lastmime = n;
-		if (n > 0 && n < 32 && mimetypes[n].length() && buff[pos[1]])
-		{
-			mg_printf(conn,"<%s>%s",mimetypes[n].c_str(),convertxml(conv, buff+pos[1]));
-		}
-	}
-	if (lastmime != -1)
-		mg_printf(conn,"</%s>",mimetypes[lastmime].c_str());
-	if (first)
-		mg_printf(conn,"<contact><name>Empty list. Your phone might not be supported. On some newer and older phones the contact list is not in /data/data/com.android.providers.contacts/databases/contacts2.db</name><phone_v2>_</phone_v2></contact></people>");
-	else
-		mg_printf(conn,"</contact></people>");
-
-	fflush(NULL);
-	pthread_mutex_unlock(&popenmutex);
-
-//	pthread_mutex_lock(&contactsmutex);
-//	syst("/system/bin/am broadcast -a \"webkey.intent.action.CONTACTS\"&");
-//	pthread_cond_wait(&contactscond,&contactsmutex);
-//	mg_write(conn,contacts.c_str(),contacts.length());
-//	pthread_mutex_unlock(&contactsmutex);
-}
-static void
-callsxml(struct mg_connection *conn,
-                const struct mg_request_info *ri, void *data)
-{
-	if (ri->permissions != PERM_ROOT && (ri->permissions&PERM_SMS_CONTACT)==0)
-		return;
-	lock_wakelock();
-	access_log(ri,"read call log");
-	send_ok(conn,"Content-Type: text/xml; charset=UTF-8");
-
-	std::string cmd = dir + "sqlite3 /data/data/com.android.providers.contacts/databases/contacts2.db \'select \"_id\",\"number\",\"date\",\"duration\",\"type\",\"new\",\"name\",\"numbertype\" from calls order by \"_id\"\'";
-	pthread_mutex_lock(&popenmutex);
-	fprintf(pipeout,"%s\n",cmd.c_str());
-	fflush(NULL);
-
-
-	char buff[LINESIZE];
-	char conv[LINESIZE];
-	int pos[7];
-	int i;
-	int j;
-	mg_printf(conn,"<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<calls>\n");
-	bool first = true;
-	while (fgets(buff, 255, pipein) != NULL)
-	{
-		if (strcmp(buff,"!!!END_OF_POPEN!!!\n")==0)
-			break;
-		i = 0;
-		j = 0;
-		while(buff[i] && buff[i] != '\n' && j < 7 && i < 255)
-		{
-			if (buff[i] == '|')
-			{
-				buff[i] = 0;
-				pos[j++] = i+1;
-			}
-			i++;
-		}
-		if (j<7)
-			continue;
-		while(buff[i]) i++;
-		if (i)
-			buff[i-1] = 0;
-		if (i-1 && buff[i-2] == 13)
-			buff[i-2] = 0;
-		mg_printf(conn,"<call><id>%s</id><number>%s</number><date>%s</date><duration>%s</duration><type>%s</type><new>%s</new><name>%s</name><numbertype>%s</numbertype></call>\n",buff,buff+pos[0],buff+pos[1],buff+pos[2],buff+pos[3],buff+pos[4],convertxml(conv,buff+pos[5]),buff+pos[6]);
-	}
-	mg_printf(conn,"</calls>");
 	pthread_mutex_unlock(&popenmutex);
 }
 static void
@@ -8968,8 +8829,7 @@ static void *event_handler(enum mg_event event,
   {
       index(conn, request_info, NULL);
   }
-  else if (urlcompare(request_info->uri, "/calls.html") ||
-		  urlcompare(request_info->uri, "/main.html")||
+  else if (urlcompare(request_info->uri, "/main.html")||
 		  urlcompare(request_info->uri, "/gps.html")||
 		  urlcompare(request_info->uri, "/help.html")||
 		  urlcompare(request_info->uri, "/pure_menu.html")||
@@ -9051,10 +8911,6 @@ static void *event_handler(enum mg_event event,
 	testfb(conn, request_info, NULL);
   else if (urlcompare(request_info->uri, "/reread"))
 	reread(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/contacts.xml"))
-	contactsxml(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/calls.xml"))
-	callsxml(conn, request_info, NULL);
   else if (urlcompare(request_info->uri, "/waitdiff"))
 	waitdiff(conn, request_info, NULL);
   else if (urlcompare(request_info->uri, "/sendbroadcast"))
