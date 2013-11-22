@@ -395,12 +395,6 @@ static std::string mimetypes[32];
 //static std::string sms;
 volatile static bool firstfb = false;
 
-
-volatile static int position_id = 0;
-
-volatile static bool gps_active = false;
-volatile static time_t last_gps_time =0;
-
 volatile static int up = 0;
 volatile static int shutdownkey_up = -1;
 
@@ -1027,8 +1021,6 @@ void clear(bool exit = true)
 		if (copyfb)
 			delete[] copyfb;
 		copyfb = NULL;
-		if (gps_active)
-			syst("/system/bin/am broadcast -a \"webkey.intent.action.GPS.STOP\" -n \"com.webkey/.GPS\"");
 		if (server_username)
 			delete[] server_username;
 		server_username = NULL;
@@ -4486,8 +4478,6 @@ sendmenu(struct mg_connection *conn,
 	mg_printf(conn,"<div id=\"tabs\"><ul>");
 	if (ri->permissions == PERM_ROOT || (ri->permissions&PERM_SCREENSHOT))
 		mg_printf(conn,"<li><a href=\"phone.html\" target=\"_top\"><span>%s</span></a></li> ",lang(ri,"Phone").c_str());
-	if (ri->permissions == PERM_ROOT || (ri->permissions&PERM_GPS))
-		mg_printf(conn,"<li><a href=\"gps.html\" target=\"_top\"><span>%s</span></a></li> ",lang(ri,"GPS").c_str());
 	if (ri->permissions == PERM_ROOT || (ri->permissions&PERM_SMS_CONTACT))
 	{
 		mg_printf(conn,"<li><a href=\"net.html\" target=\"_top\"><span>%s</span></a></li> ",lang(ri,"Net").c_str());
@@ -5728,53 +5718,6 @@ sendbroadcast(struct mg_connection *conn,
 	{
 		lock_wakelock();
 		syst("/system/bin/am broadcast -a \"android.intent.action.BOOT_COMPLETED\" -n com.android.mms/.transaction.SmsReceiver&");
-	}
-}
-static void
-gpsset(struct mg_connection *conn,
-                const struct mg_request_info *ri, void *data)
-{
-	send_ok(conn);
-	if (ri->remote_ip==2130706433 && strcmp(ri->remote_user,"JAVA_CLIENT") == 0) //localhost
-	{
-		lock_wakelock();
-		int n = strlen(ri->uri)-7;
-		int i;
-//		printf("%s\n",ri->uri);
-		if (n<512)
-			for (i=n;i>=0;i--)
-				position_value[i] = ri->uri[i+7];
-		position_id++;
-	}
-}
-static void
-gpsget(struct mg_connection *conn,
-                const struct mg_request_info *ri, void *data)
-{
-	if (ri->permissions != PERM_ROOT && (ri->permissions&PERM_GPS)==0)
-		return;
-	lock_wakelock();
-	access_log(ri,"get gps position");
-	send_ok(conn);
-	FILE* in;
-	int last = ++position_id;
-	syst("/system/bin/am broadcast -a \"webkey.intent.action.GPS.START\" -n \"com.webkey/.GPS\"");
-	gps_active = true;
-	struct timeval tv;
-	gettimeofday(&tv,0);
-	last_gps_time = tv.tv_sec;
-	int i;
-	for (i=0; i<25;i++)
-	{
-		if (last != position_id)
-		{
-			mg_printf(conn,"%s",position_value);
-			break;
-		}
-		struct timespec tim;
-		tim.tv_sec = 0;
-		tim.tv_nsec = 200000000; //wait 200 ms
-		nanosleep(&tim,0);
 	}
 }
 
@@ -8830,7 +8773,6 @@ static void *event_handler(enum mg_event event,
       index(conn, request_info, NULL);
   }
   else if (urlcompare(request_info->uri, "/main.html")||
-		  urlcompare(request_info->uri, "/gps.html")||
 		  urlcompare(request_info->uri, "/help.html")||
 		  urlcompare(request_info->uri, "/pure_menu.html")||
 		  urlcompare(request_info->uri, "/pure_menu_nochat.html")||
@@ -8867,10 +8809,6 @@ static void *event_handler(enum mg_event event,
 	savekeys(conn, request_info, NULL);
   else if (urlcompare(request_info->uri, "/button*"))
 	button(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/gpsget"))
-	gpsget(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/gpsset*"))
-	gpsset(conn, request_info, NULL);
   else if (urlcompare(request_info->uri, "/config_buttons.html"))
 	config_buttons(conn, request_info, NULL);
   else if (urlcompare(request_info->uri, "/config_keys.html"))
@@ -9522,7 +9460,7 @@ int main(int argc, char **argv)
 	chown((dir+passfile).c_str(), info.st_uid, info.st_gid);
 	chmod((dir+passfile).c_str(), S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP);
 	char prot[512];
-	sprintf(prot,(std::string("/favicon.ico=,/flags_=,/javatest=,/gpsset=,/stop=,/dyndns=,/reread=,/test=,/sendbroadcast=,/index.html=,/register=,/reganim.gif=,/js/jquery=,/=")+dir+passfile).c_str());
+	sprintf(prot,(std::string("/favicon.ico=,/flags_=,/javatest=,/stop=,/dyndns=,/reread=,/test=,/sendbroadcast=,/index.html=,/register=,/reganim.gif=,/js/jquery=,/=")+dir+passfile).c_str());
 //        mg_set_option(ctx, "auth_realm", "Webkey");
 #ifdef __linux__
 //        mg_set_option(ctx, "error_log", "log.txt");
@@ -9729,15 +9667,6 @@ int main(int argc, char **argv)
 //			vibrator_on(1500);
 
 			i = 0;
-			if (gps_active)
-			{
-				gettimeofday(&tv,0);
-				if (tv.tv_sec > last_gps_time + 30)
-				{
-					syst("/system/bin/am broadcast -a \"webkey.intent.action.GPS.STOP\" -n \"com.webkey/.GPS\"");
-					gps_active = false;
-				}
-			}
 		}
 		//__android_log_print(ANDROID_LOG_INFO,"Webkey C++","debug: d = %d, dyndns = %d, host = %s, dyndns_base64 = %s",d,dyndns,dyndns_host.c_str(),dyndns_base64.c_str());
 		if (d==60)
@@ -9803,8 +9732,6 @@ int main(int argc, char **argv)
 	pthread_mutex_lock(&diffmutex);
 	pthread_cond_broadcast(&diffstartcond);
 	pthread_mutex_unlock(&diffmutex);
-	if (gps_active)
-		syst("/system/bin/am broadcast -a \"webkey.intent.action.GPS.STOP\" -n \"com.webkey/.GPS\"");
         (void) printf("Exiting on signal %d, "
             "waiting for all threads to finish...", exit_flag);
         fflush(stdout);
