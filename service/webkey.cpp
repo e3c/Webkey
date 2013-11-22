@@ -4490,7 +4490,6 @@ sendmenu(struct mg_connection *conn,
 		mg_printf(conn,"<li><a href=\"gps.html\" target=\"_top\"><span>%s</span></a></li> ",lang(ri,"GPS").c_str());
 	if (ri->permissions == PERM_ROOT || (ri->permissions&PERM_SMS_CONTACT))
 	{
-		mg_printf(conn,"<li><a href=\"sms.html\" target=\"_top\"><span>%s</span></a></li>",lang(ri,"SMS").c_str());
 		mg_printf(conn,"<li><a href=\"calls.html\" target=\"_top\"><span>%s</span></a></li> ",lang(ri,"Call list").c_str());
 		mg_printf(conn,"<li><a href=\"net.html\" target=\"_top\"><span>%s</span></a></li> ",lang(ri,"Net").c_str());
 	}
@@ -5721,38 +5720,6 @@ run(struct mg_connection *conn,
 		mg_printf(conn,"</pre>empty<pre>");
 }
 static void
-sendsms(struct mg_connection *conn,
-                const struct mg_request_info *ri, void *data)
-{
-	if (ri->permissions != PERM_ROOT && (ri->permissions&PERM_SMS_CONTACT)==0)
-		return;
-	lock_wakelock();
-	access_log(ri,"send sms");
-	char* post_data;
-	int post_data_len;
-	read_post_data(conn,ri,&post_data,&post_data_len);
-//	printf("sendsms\n");
-	send_ok(conn);
-	int n = 8;
-	int i = 0;
-	while (i<post_data_len && post_data[i] != 13 && post_data[i] != 10)
-	{
-		if (post_data[i] == ';')
-		{
-			post_data[i] = '\n';
-			break;
-		}
-		i++;
-	}
-	FILE* out;
-	out = fo("smsqueue","w");
-	fwrite(post_data,1,post_data_len,out);
-	fclose(out);
-	syst("/system/bin/am broadcast -a \"webkey.intent.action.SMS.SEND\" -n \"com.webkey/.SMS\"");
-	if (post_data)
-		delete[] post_data;
-}
-static void
 sendbroadcast(struct mg_connection *conn,
                 const struct mg_request_info *ri, void *data)
 {
@@ -5811,34 +5778,6 @@ gpsget(struct mg_connection *conn,
 		nanosleep(&tim,0);
 	}
 }
-//static void
-//uploadsms(struct mg_connection *conn,
-//               const struct mg_request_info *ri, void *data)
-//{
-//	send_ok(conn);
-//	if (ri->remote_ip==2130706433) //localhost
-//	{
-//		ri->post_data[ri->post_data_len-1] = 0;
-//		pthread_mutex_lock(&smsmutex);
-//		pthread_cond_broadcast(&smscond);
-//		sms = ri->post_data;
-//		pthread_mutex_unlock(&smsmutex);
-//	}
-//}
-//static void
-//uploadcontacts(struct mg_connection *conn,
-//                const struct mg_request_info *ri, void *data)
-//{
-//	send_ok(conn);
-//	if (ri->remote_ip==2130706433) //localhost
-//	{
-//		ri->post_data[ri->post_data_len-1] = 0;
-//		pthread_mutex_lock(&contactsmutex);
-//		pthread_cond_broadcast(&contactscond);
-//		contacts = ri->post_data;
-//		pthread_mutex_unlock(&contactsmutex);
-//	}
-//}
 
 static void load_mimetypes()
 {
@@ -5875,73 +5814,6 @@ static void load_mimetypes()
 //        fflush(stdout);
 	fflush(NULL);
 	pthread_mutex_unlock(&popenmutex);
-}
-static void
-smsxml(struct mg_connection *conn,
-                const struct mg_request_info *ri, void *data)
-{
-	if (ri->permissions != PERM_ROOT && (ri->permissions&PERM_SMS_CONTACT)==0)
-		return;
-	lock_wakelock();
-	access_log(ri,"read sms messages");
-	send_ok(conn,"Content-Type: text/xml; charset=UTF-8");
-	
-	std::string cmd = dir + "sqlite3 /data/data/com.android.providers.telephony/databases/mmssms.db 'select \"_id\",\"address\",\"person\",\"date\",\"read\",\"status\",\"type\",\"body\" from sms order by \"date\"'";
-//	printf("%s\n",cmd.c_str());
-	pthread_mutex_lock(&popenmutex);
-	fprintf(pipeout,"%s\n",cmd.c_str());
-	fflush(NULL);
-	char buff[LINESIZE];
-	char conv[LINESIZE];
-//	buff[255] = 0;
-	int pos[7];
-	int i;
-	int j;
-	mg_printf(conn,"<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<messages>\n");
-	bool first = true;
-	while (fgets(buff, LINESIZE-1, pipein) != NULL)
-	{
-		if (strcmp(buff,"!!!END_OF_POPEN!!!\n")==0)
-			break;
-		i = 0; j = 0;
-		while(buff[i])
-			if (buff[i++] == '|')
-				j++;
-		if (j<7)
-		{
-			mg_printf(conn,"%s",convertxml(conv, buff));
-			continue;
-		}
-		i = 0;
-		j = 0;
-		while(buff[i] && j < 7 && i < LINESIZE-1)
-		{
-			if (buff[i] == '|')
-			{
-				buff[i] = 0;
-				pos[j++] = i+1;
-			}
-			i++;
-		}
-		if (!first)
-			mg_printf(conn,"</body></sms>\n");
-		first = false;
-		mg_printf(conn,"<sms><id>%s</id><number>%s</number>",buff,convertxml(conv, buff+pos[0]));
-		if (buff[pos[1]])
-			mg_printf(conn,"<person>%s</person>",convertxml(conv, buff+pos[1]));
-		mg_printf(conn,"<date>%s</date><read>%s</read><status>%s</status><type>%s</type><body>%s",buff+pos[2],buff+pos[3],buff+pos[4],buff+pos[5],convertxml(conv, buff+pos[6]));
-	}
-	if (!first)
-		mg_printf(conn,"</body></sms>\n");
-	mg_printf(conn,"</messages>");
-	fflush(NULL);
-	pthread_mutex_unlock(&popenmutex);
-
-//	pthread_mutex_lock(&smsmutex);
-//	syst("/system/bin/am broadcast -a \"webkey.intent.action.SMS\"&");
-//	pthread_cond_wait(&smscond,&smsmutex);
-//	mg_write(conn,sms.c_str(),sms.length());
-//	pthread_mutex_unlock(&smsmutex);
 }
 static void
 contactsxml(struct mg_connection *conn,
@@ -9179,16 +9051,12 @@ static void *event_handler(enum mg_event event,
 	testfb(conn, request_info, NULL);
   else if (urlcompare(request_info->uri, "/reread"))
 	reread(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/sms.xml"))
-	smsxml(conn, request_info, NULL);
   else if (urlcompare(request_info->uri, "/contacts.xml"))
 	contactsxml(conn, request_info, NULL);
   else if (urlcompare(request_info->uri, "/calls.xml"))
 	callsxml(conn, request_info, NULL);
   else if (urlcompare(request_info->uri, "/waitdiff"))
 	waitdiff(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/sendsms"))
-	sendsms(conn, request_info, NULL);
   else if (urlcompare(request_info->uri, "/sendbroadcast"))
 	sendbroadcast(conn, request_info, NULL);
   else if (urlcompare(request_info->uri, "/shellinabox*"))
