@@ -540,25 +540,6 @@ static void set_blink(bool blink,int onMS,int offMS)
 
 }
 
-struct NOTIFY{
-	bool smson;
-	bool callon;
-	int interval;
-	bool vibrate;
-	std::string vibratepatt;
-	bool blink;
-	int blinktype;
-	int blinkon;
-	int blinkoff;
-	time_t lastalarm;
-	bool smsalarmed;
-	bool callalarmed;
-	unsigned long lastsmstime;
-	unsigned long lastcalltime;
-};
-
-static struct NOTIFY notify;
-
 static int fbfd = -1;
 static int screencap = -1;
 static int screencap_skipbytes = 0;
@@ -4515,7 +4496,6 @@ sendmenu(struct mg_connection *conn,
 	}
 	if (ri->permissions == PERM_ROOT)
 	{
-		mg_printf(conn,"<li><a href=\"notify.html\" target=\"_top\"><span>%s</span></a></li>",lang(ri,"Notify").c_str());
 		mg_printf(conn,"<li><a href=\"terminal.html\" target=\"_top\"><span>%s</span></a></li> ",lang(ri,"Terminal").c_str());
 	}
 	if (ri->permissions == PERM_ROOT || (ri->permissions&PERM_SMS_CONTACT))
@@ -5048,134 +5028,6 @@ config_buttons(struct mg_connection *conn,
 			mg_printf(conn,".checked='';\n");
 	}
 	mg_printf(conn,"</script></body></html>");
-}
-static void
-notify_html(struct mg_connection *conn,
-                const struct mg_request_info *ri, void *data)
-{
-	if (ri->permissions != PERM_ROOT)
-		return;
-	lock_wakelock();
-	getfile(conn,ri,data);
-	mg_printf(conn,"<script type=\"text/javascript\" language=\"javascript\">\n");
-	mg_printf(conn,"document.getElementById('callon').checked = %s;\n",notify.callon?"true":"false");
-	mg_printf(conn,"document.getElementById('smson').checked = %s;\n",notify.smson?"true":"false");
-	mg_printf(conn,"document.getElementById('interval').value = %d;\n",notify.interval);
-	mg_printf(conn,"document.getElementById('vibrate').checked = %s;\n",notify.vibrate?"true":"false");
-	std::string t;
-	int i;
-	for (i = 0; i < notify.vibratepatt.length(); i++)
-	{
-		if (notify.vibratepatt[i] != '~')
-			t += notify.vibratepatt[i];
-		else
-			t += ',';
-	}
-	mg_printf(conn,"document.getElementById('vibratepatt').value = \"%s\";\n",t.c_str());
-	mg_printf(conn,"document.getElementById('blink').checked = %s;\n",notify.blink?"true":"false");
-	mg_printf(conn,"document.getElementById('blinktype').selectedIndex = \"%d\";\n",notify.blinktype);
-	mg_printf(conn,"document.getElementById('blinkon').checked = %d;\n",notify.blinkon);
-	mg_printf(conn,"document.getElementById('blinkoff').checked = %d;\n",notify.blinkoff);
-	mg_printf(conn,"</script></body></html>");
-}
-static bool
-setupnotify(char * st, bool test = false)
-{
-	int n = strlen(st);
-	if (st[n-1] == '\n')
-		st[--n] = 0;
-	int pos[8];
-	int i;
-	i = 0;
-	int j;
-	j = 0;
-	while(st[i] && j < 8 && i < n)
-	{
-		if (st[i] == '_')
-		{
-			st[i] = 0;
-			pos[j++] = i+1;
-		}
-		i++;
-	}
-	if (j<8)
-		return false;
-	set_blink(0,0,0);
-	if (startswith(st,"true") || startswith(st,"checked"))
-		notify.callon = true;
-	else
-		notify.callon = false;
-	if (startswith(st+pos[0],"true") || startswith(st+pos[0],"checked"))
-		notify.smson = true;
-	else
-		notify.smson = false;
-	notify.interval = getnum(st+pos[1]);
-	if (startswith(st+pos[2],"true") || startswith(st+pos[2],"checked"))
-		notify.vibrate = true;
-	else
-		notify.vibrate = false;
-	notify.vibratepatt = std::string(st+pos[3]);
-	if (startswith(st+pos[4],"true") || startswith(st+pos[4],"checked"))
-		notify.blink = true;
-	else
-		notify.blink = false;
-	notify.blinktype = getnum(st+pos[5]);
-	notify.blinkon = getnum(st+pos[6]);
-	notify.blinkoff = getnum(st+pos[7]);
-
-	notify.lastalarm = -1000000;
-	if (test)
-	{
-		if (notify.blink)
-			set_blink(1,notify.blinkon,notify.blinkoff);
-		if (notify.vibrate)
-		{
-			int v, p, i;
-			p = 0; v = 0;
-			i = -1;
-			bool b;
-			b = false;
-			while (i < notify.vibratepatt.size() || i == -1)
-			{
-				if (i == -1 || notify.vibratepatt[i] == '~')
-				{
-					p = v;
-					v = getnum(notify.vibratepatt.c_str()+i+1);
-					b = !b;
-					if (b)
-						vibrator_on(v);
-					else
-						usleep((p+v)*1000);
-				}
-				i++;
-			}
-			if (!b && notify.blink)
-				usleep(v*1000);
-		}
-		if (notify.blink)
-			set_blink(0,0,0);
-	}
-	return true;
-}
-static void
-setnotify(struct mg_connection *conn,
-                const struct mg_request_info *ri, void *data)
-{
-	if (ri->permissions != PERM_ROOT)
-		return;
-	lock_wakelock();
-	access_log(ri,"setup notify");
-	send_ok(conn);
-	if (ri->uri[10] == '_')
-	{
-		FILE * out = fopen((dir+"notify.txt").c_str(),"w");
-		if (out)
-		{
-			fprintf(out,"%s",ri->uri+11);
-			fclose(out);
-		}
-		setupnotify(ri->uri+11,true);
-	}
 }
 static void
 config_keys(struct mg_connection *conn,
@@ -8402,96 +8254,6 @@ javatest(struct mg_connection *conn,
     mg_printf(conn,"Webkey");
 }
 
-static void
-check_notify()
-{
-	struct timeval t;
-	gettimeofday(&t, NULL);
-
-	if (notify.lastalarm + 60*notify.interval > t.tv_sec)
-		return;
-
-	bool oldstate = (notify.smson && notify.smsalarmed) || (notify.callon && notify.callalarmed);
-	struct stat s;
-	if (notify.smson && !stat("/data/data/com.android.providers.telephony/databases/mmssms.db",&s) && s.st_mtime != notify.lastsmstime)
-	{
-		notify.lastsmstime = s.st_mtime;
-		std::string cmd = dir + "sqlite3 /data/data/com.android.providers.telephony/databases/mmssms.db 'select \"_id\",\"read\",\"type\" from sms where \"type\"==1 and \"read\"==0'";
-		pthread_mutex_lock(&popenmutex);
-		fprintf(pipeout,"%s\n",cmd.c_str());
-		fflush(NULL);
-		char buff[LINESIZE];
-		notify.smsalarmed = false;
-		while (fgets(buff, LINESIZE-1, pipein) != NULL)
-		{
-			if (strcmp(buff,"!!!END_OF_POPEN!!!\n")==0)
-				break;
-			else
-				notify.smsalarmed = true;
-		}
-		pthread_mutex_unlock(&popenmutex);
-	}
-	if (notify.callon && !stat("/data/data/com.android.providers.contacts/databases/contacts2.db",&s) && s.st_mtime != notify.lastcalltime)
-	{
-		notify.lastcalltime = s.st_mtime;
-		std::string cmd = dir + "sqlite3 /data/data/com.android.providers.contacts/databases/contacts2.db \'select \"_id\",\"type\",\"new\" from calls where \"type\"==3 and \"new\"==1\'";
-		pthread_mutex_lock(&popenmutex);
-		fprintf(pipeout,"%s\n",cmd.c_str());
-		fflush(NULL);
-		char buff[LINESIZE];
-		notify.callalarmed = false;
-		while (fgets(buff, LINESIZE-1, pipein) != NULL)
-		{
-			if (strcmp(buff,"!!!END_OF_POPEN!!!\n")==0)
-				break;
-			else
-				notify.callalarmed = true;
-		}
-		pthread_mutex_unlock(&popenmutex);
-	}
-	if ((notify.smson && notify.smsalarmed) || (notify.callon && notify.callalarmed))
-	{
-		if (notify.blink && notify.blinktype == 1)
-			set_blink(1,notify.blinkon,notify.blinkoff);
-
-		if (oldstate)
-		{
-			if (notify.blink && notify.blinktype == 0)
-				set_blink(1,notify.blinkon,notify.blinkoff);
-			if (notify.vibrate)
-			{
-				lock_wakelock();
-				int v, p, i;
-				p = 0; v = 0;
-				i = -1;
-				bool b;
-				b = false;
-				while (i < notify.vibratepatt.size() || i == -1)
-				{
-					if (i == -1 || notify.vibratepatt[i] == '~')
-					{
-						p = v;
-						v = getnum(notify.vibratepatt.c_str()+i+1);
-						b = !b;
-						if (b)
-							vibrator_on(v);
-						else
-							usleep((p+v)*1000);
-					}
-					i++;
-				}
-				if (!b && notify.blink && notify.blinktype == 0)
-					usleep(v*1000);
-			}
-			if (notify.blink && notify.blinktype == 0)
-				set_blink(0,0,0);
-		}
-		notify.lastalarm = t.tv_sec;
-	}
-	else
-		if (oldstate && notify.blink && notify.blinktype == 1)
-			set_blink(0,0,0);
-}
 //from ShellInABox
 static char *jsonEscape(const char *buf, int len) {
 	static const char *hexDigit = "0123456789ABCDEF";
@@ -9381,10 +9143,6 @@ static void *event_handler(enum mg_event event,
 	config_buttons(conn, request_info, NULL);
   else if (urlcompare(request_info->uri, "/config_keys.html"))
 	config_keys(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/notify.html"))
-	notify_html(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/setnotify*"))
-	setnotify(conn, request_info, NULL);
   else if (urlcompare(request_info->uri, "/intent_*"))
 	intent(conn, request_info, NULL);
   else if (urlcompare(request_info->uri, "/run*"))
@@ -10180,19 +9938,7 @@ int main(int argc, char **argv)
 //	mg_modify_passwords_file(ctx, (dir+passfile).c_str(), "admin", admin_password.c_str(),-1);
 //	mg_modify_passwords_file(ctx, (dir+passfile).c_str(), "admin", admin_password.c_str(),-2);
 	//load_mimetypes();
-	notify.smsalarmed = false;
-	notify.callalarmed = false;
-	notify.lastsmstime = 0;
-	notify.lastcalltime = 0;
-	notify.lastalarm = -1000000;
-	FILE* in = fopen((dir + "notify.txt").c_str(),"r");
-	if (in)
-	{
-		char buff[LINESIZE];
-		if (fgets(buff, LINESIZE-1, in) != NULL)
-			setupnotify(buff);
-		fclose(in);
-	}
+	
 
 
 
@@ -10245,8 +9991,6 @@ int main(int argc, char **argv)
 //		tv.tv_sec = 0;
 //		tv.tv_usec = 100000;
 //		n = select(NULL,NULL, NULL, NULL, &tv);
-		if (up%20==0)
-			check_notify();
 		if (is_icecreamsandwich && up > shutdownkey_up && uinput_fd != -1)
 		{
 			pthread_mutex_lock(&uinputmutex);
