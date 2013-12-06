@@ -30,17 +30,13 @@ import android.os.Bundle;
 
 import android.preference.PreferenceManager;
 import android.text.InputType;
-import android.util.Log;
 import android.view.View;
 import android.view.Window;
 import android.view.View.OnClickListener;
 import android.widget.CompoundButton;
 import android.widget.EditText;
-import android.widget.TextView;
 import android.widget.Toast;
-import com.webkey.Base64;
 import com.webkey.BinIO;
-import com.webkey.DynDnsSettings;
 import com.webkey.Ipc;
 import com.webkey.ManageUsers;
 import com.webkey.R;
@@ -55,14 +51,6 @@ public class SettingsTab extends Activity implements OnClickListener{
 	Context mContext;
 	
 	boolean notifyBarPref = false;
-	
-	boolean ddusing = false;
-	boolean ddrefresh = false;	
-	private String ddUserName = "";
-	private String ddDomain = "";
-	private String ddPassword = "";	
-	
-
 	private String serverUsername=null;	
 	
 	@Override
@@ -76,8 +64,6 @@ public class SettingsTab extends Activity implements OnClickListener{
         findViewById(R.id.helpbutton).setOnClickListener(this);
 		findViewById(R.id.changeusernamebutton).setOnClickListener(this);
 		findViewById(R.id.edit_portbutton).setOnClickListener(this);
-		findViewById(R.id.usingdyndns).setOnClickListener(this);
-		findViewById(R.id.ddsettingsbutton).setOnClickListener(this);
 		findViewById(R.id.servercheckbox).setOnClickListener(this);
 		findViewById(R.id.autostartcheckbox).setOnClickListener(this);
 		findViewById(R.id.notifisetting).setOnClickListener(this);
@@ -102,22 +88,6 @@ public class SettingsTab extends Activity implements OnClickListener{
 		 
 		serverUsername = prefs.getString("username", "");
 		notifyBarPref=prefs.getBoolean("statusbar", true);
-		
-        //dyndns settings
-		//ddrefresh azert kell mert ha valtozik a beallitas arrol ertesiteni kell a backendet.
-        ddrefresh = prefs.getBoolean("ddchange", false);        
-        ddUserName = prefs.getString("ddusername", "");
-        ddDomain = prefs.getString("dddomain", "");
-        ddPassword = prefs.getString("ddpassword", "");
-        ddusing = prefs.getBoolean("ddusing", false);
-		       	
-		
-        if(ddUserName.equals("") || ddPassword.equals("") || ddDomain.equals("")){
-        	((CompoundButton) findViewById(R.id.usingdyndns)).setChecked(false);
-        	ddusing = false;
-        }else{
-        	((CompoundButton) findViewById(R.id.usingdyndns)).setChecked(ddusing);
-        }
                
         //fontos, hogy a refres a ddusing check UTAN legyen!!!                  
         refresh();                
@@ -145,37 +115,7 @@ public class SettingsTab extends Activity implements OnClickListener{
         	case R.id.edit_portbutton:
         		showPortDialog();
     			break;
-    		
-        	case R.id.ddsettingsbutton:
-        		Intent settingsActivity = new Intent(getBaseContext(), DynDnsSettings.class);
-		        startActivity(settingsActivity);
-		        break;
-		        
-        	case R.id.usingdyndns:
-		        if (((CompoundButton) findViewById(R.id.usingdyndns)).isChecked()) {		
-					//Validacio teszt
-					if(ddUserName.equals("") || ddPassword.equals("") || ddDomain.equals("")){			    		
-			    		showDialog(getString(R.string.main_notvaliddd),getString(R.string.warning));
-			    		((CompoundButton) findViewById(R.id.usingdyndns)).setChecked(false);
-			    	}else{				
-			    		prefsEditor.putBoolean("ddusing", true);
-			    		prefsEditor.commit();
-			            ddusing = true;
-			    		String hash = ddUserName+":"+ddPassword;
-			    		hash = Base64.encodeBytes(hash.getBytes());
-			    		new DownloadFilesTask().execute("dyndns"+ddDomain+"&"+hash);
-			    	}				
-		            
-		        }else{
-		        	prefsEditor.putBoolean("ddusing", false);
-		        	prefsEditor.commit();
-		            ddusing = false;
-		    		new DownloadFilesTask().execute("dyndns");
-		    		//TODO: ext le kell ellenorizni, hgoy tenyleg le all e a frissites
-					//ipc.comBin("dyndns"+ddDomain+"&STOP");
-		        }
-        		break;
-        	
+
         	case R.id.servercheckbox:
         		boolean server=((CompoundButton) findViewById(R.id.servercheckbox)).isChecked();
 	            if (server && serverUsername.length()==0)
@@ -236,7 +176,6 @@ public class SettingsTab extends Activity implements OnClickListener{
 			findViewById(R.id.edit_portbutton).setEnabled(true);
 			findViewById(R.id.usersettingsbtn).setEnabled(false);
 			ipc.notiyDestroy(mContext);
-			ddrefresh = true;			
 		}else{			    			    				
 			findViewById(R.id.edit_portbutton).setEnabled(false);
 			findViewById(R.id.usersettingsbtn).setEnabled(true);
@@ -245,27 +184,14 @@ public class SettingsTab extends Activity implements OnClickListener{
 			if(notifyBarPref){
 				ipc.notiyShow(mContext, "Running");
 			}
-					
-			//Ha valtozott a ddsettings es engedelyezve van a dd szolgaltatas akkor szolunk a backendnek
-			if(ddusing && ddrefresh){
-				String hash = ddUserName+":"+ddPassword;
-				hash = Base64.encodeBytes(hash.getBytes()); 
-				new DownloadFilesTask().execute("dyndns"+ddDomain+"&"+hash);
-				prefsEditor.putBoolean("ddchange", false);
-				prefsEditor.commit();
-				ddrefresh = false;
-			}
 		}				
 	}
-		
-	
-	
+
 	@Override
 	public void onDestroy(){
 		super.onDestroy();
 	}
-		
-	
+
 	private void showPortDialog() {
 		final Dialog dialog = new Dialog(this);
 		dialog.requestWindowFeature(Window.FEATURE_LEFT_ICON);

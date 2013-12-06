@@ -47,13 +47,7 @@ public class BootRinstall extends BroadcastReceiver{
         final SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
         boolean ASPref = prefs.getBoolean("autostart", true);
         boolean StatusBarPref = prefs.getBoolean("statusbar", true);
-        
-        String ddUserName = prefs.getString("ddusername", "empty");
-        String ddDomain = prefs.getString("dddomain", "empty");
-        String ddPassword = prefs.getString("ddpassword", "empty");
-        boolean ddusing = prefs.getBoolean("ddusing", false);
-        
-        
+      
 //	Log.e("Webkey", "BOOTTEST before if ASPref");
 	int version = -1;
 	try {
@@ -68,7 +62,7 @@ public class BootRinstall extends BroadcastReceiver{
         	ipc.startService();
 //		Log.e("Webkey", "BOOTTEST after startService");
         	        	
-        	if(StatusBarPref || ddusing){
+        	if(StatusBarPref) {
         		for (int i=0; i < 20 && !ipc.runTest(); i++){
         			try{
         				Thread.sleep(500);
@@ -76,22 +70,9 @@ public class BootRinstall extends BroadcastReceiver{
         		}
 
        		
-        		if(ipc.runTest()){
-        			if(StatusBarPref){
-        				ipc.notiyShow(context,"Service is running");
-        			}
-	    			if(ddusing){
-	    				String hash = ddUserName+":"+ddPassword;
-	    				hash = Base64.encodeBytes(hash.getBytes());
-	    				//Log.d("Webkey","senddynup");
-//	    				String message = ipc.comBinAuth("dyndns"+ddDomain+"&"+hash);
-//	    				Log.d("Webkey",message);
-	    			}
-        		}
+        		if(ipc.runTest() && StatusBarPref) ipc.notiyShow(context,"Service is running");
         	}
         	
         }
-
-	}
-    
+	}    
 }

@@ -22,13 +22,7 @@
 					android:layout_x="50px"
 					android:layout_y="72px">
 				</CheckBox>
-		
-				<CheckBox android:id="@+id/usingdyndns"
-					android:layout_width="wrap_content" android:layout_height="wrap_content"
-					android:text="@string/main_ddusing_cbox" android:layout_x="50px"
-					android:layout_y="72px">
-				</CheckBox>
-		
+
 				<CheckBox android:id="@+id/servercheckbox"
 					android:layout_width="wrap_content"
 					android:layout_height="wrap_content"
@@ -48,9 +42,6 @@
 				<TableLayout android:id="@+id/row1" android:layout_width="fill_parent"
 					android:layout_height="wrap_content" android:layout_gravity="fill_horizontal">
 					<TableRow>
-					<Button android:text="@string/main_ddbsettings_btn" android:id="@+id/ddsettingsbutton"
-						android:layout_width="0dip" android:layout_height="wrap_content"
-						android:layout_weight="1" />
 						
 					<Button android:text="@string/main_changeport_btn" android:id="@+id/edit_portbutton"
 					android:layout_width="0dip"
