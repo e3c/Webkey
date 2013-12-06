@@ -74,13 +74,6 @@
                   android:label="@string/app_name">
         </activity>
         
-        <activity android:name=".activity.ChatUI" android:configChanges="orientation"
-        		android:launchMode="singleInstance" 
-        		android:label="Webkey Chat" >
-        		<intent-filter>
-                	<action android:name="android.intent.action.MAIN" />
-             	</intent-filter>
-        </activity> 
         
         <receiver android:name=".receivers.RemoteRegistrationReceiver">  
                  <intent-filter>  
