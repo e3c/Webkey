@@ -36,27 +36,8 @@ public class Webkey extends TabActivity {
 	                      res.getDrawable(R.drawable.ic_tab_settings))
 	                  .setContent(intent);
 	    tabHost.addTab(spec);
-	    
 
-	    intent = new Intent().setClass(this, com.webkey.activity.ChatUI.class);
-	    spec = tabHost.newTabSpec("chat").setIndicator("Chat",
-	                      res.getDrawable(R.drawable.ic_tab_chat))
-	                  .setContent(intent);
-	    tabHost.addTab(spec);
-        
 	    tabHost.setCurrentTab(0);
 	}
-	
-	@Override
-	public void onResume(){		
-		super.onResume();
-		String isChatMsg=null;
-//        Log.d("Webkey_java: ","onresume");
-        Intent intent = getIntent();
-        isChatMsg = intent.getAction();
-        if(isChatMsg != null && isChatMsg.equals("chat")){
-//        	Log.d("Webkey_java | webkey: ","received intent tab parameter: "+isChatMsg);
-        	tabHost.setCurrentTab(2);
-        }
-	}		
+
 }
