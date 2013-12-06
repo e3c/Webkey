@@ -43,12 +43,7 @@ public class Webkey extends TabActivity {
 	                      res.getDrawable(R.drawable.ic_tab_chat))
 	                  .setContent(intent);
 	    tabHost.addTab(spec);
-
-            intent = new Intent().setClass(this, com.webkey.remotescreen.RemoteScreenActivity.class);
-            spec = tabHost.newTabSpec("remotescreen").setIndicator("RemoteScreen",res.getDrawable(R.drawable.ic_tab_remote))
-                                .setContent(intent);
-            tabHost.addTab(spec);
-
+        
 	    tabHost.setCurrentTab(0);
 	}
 	
