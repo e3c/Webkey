@@ -98,7 +98,6 @@ public class WebkeyTab extends Activity implements OnClickListener{
         findViewById(R.id.startbutton).setOnClickListener(this);
         findViewById(R.id.stopbutton).setOnClickListener(this);       
         findViewById(R.id.helpbutton).setOnClickListener(this);
-		findViewById(R.id.donate).setOnClickListener(this);
 		
         if((NEW_VERSION != old_ver || old_ver == -1) && waitProgress==false){
         	waitProgress=true;
@@ -197,12 +196,7 @@ public class WebkeyTab extends Activity implements OnClickListener{
         	case R.id.helpbutton:						    			
     			showDialog(getString(R.string.main_help_txt)+getString(R.string.main_translators),getString(R.string.main_help));  
     			break;
-        	                
-        	case R.id.donate:
-        		Intent i = new Intent("android.intent.action.VIEW", Uri.parse("http://www.webkey.cc/#donate"));
-        		startActivity(i);
-        		break;
-        		
+
         	case R.id.usersettingsbtn:
         		Intent UsersActivity = new Intent(getBaseContext(), ManageUsers.class);
                 startActivity(UsersActivity);        		
