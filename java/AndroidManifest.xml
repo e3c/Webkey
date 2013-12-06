@@ -73,13 +73,6 @@
                  <intent-filter>  
                         <action android:name="webkey.intent.action.remote.registration"/>    
                  </intent-filter>   
-		</receiver>        
-        
-                     
-		<receiver android:name="BootRinstall" android:permission="android.permission.RECEIVE_BOOT_COMPLETED">  
-                 <intent-filter>  
-                         <action android:name="android.intent.action.BOOT_COMPLETED"/>  
-                 </intent-filter>   
 		</receiver>
 		
 		<receiver android:name=".SL4A"> 

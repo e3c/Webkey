@@ -64,7 +64,6 @@ public class SettingsTab extends Activity implements OnClickListener{
 		findViewById(R.id.changeusernamebutton).setOnClickListener(this);
 		findViewById(R.id.edit_portbutton).setOnClickListener(this);
 		findViewById(R.id.servercheckbox).setOnClickListener(this);
-		findViewById(R.id.autostartcheckbox).setOnClickListener(this);
 		findViewById(R.id.notifisetting).setOnClickListener(this);
 		findViewById(R.id.usersettingsbtn).setOnClickListener(this);
 		findViewById(R.id.allow_remote_reg).setOnClickListener(this);
@@ -81,7 +80,6 @@ public class SettingsTab extends Activity implements OnClickListener{
 		
 		//indicate the saved settings
 		((CompoundButton) findViewById(R.id.servercheckbox)).setChecked(prefs.getBoolean("server", false));
-		((CompoundButton) findViewById(R.id.autostartcheckbox)).setChecked(prefs.getBoolean("autostart", true));
 		((CompoundButton) findViewById(R.id.notifisetting)).setChecked(prefs.getBoolean("statusbar", true));
 		((CompoundButton) findViewById(R.id.allow_remote_reg)).setChecked(prefs.getBoolean("allowremotereg", true));
 		 
@@ -123,15 +121,6 @@ public class SettingsTab extends Activity implements OnClickListener{
 	            ipc.comBinAuth("reread");
 	            refresh();
 	            break;
-	            
-        	case R.id.autostartcheckbox:
-		        if (((CompoundButton) findViewById(R.id.autostartcheckbox)).isChecked()) {
-		        	prefsEditor.putBoolean("autostart", true);	
-		        }else{
-		        	prefsEditor.putBoolean("autostart", false);		         
-		        }
-	        	prefsEditor.commit();
-		        break;
 		    
         	case R.id.allow_remote_reg:
         		boolean state = ((CompoundButton) findViewById(R.id.allow_remote_reg)).isChecked();

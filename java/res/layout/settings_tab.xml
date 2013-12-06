@@ -8,12 +8,6 @@
 			android:layout_height="fill_parent">
 			<LinearLayout android:orientation="vertical"
 				android:layout_width="fill_parent" android:layout_height="fill_parent">
-				
-				
-				<CheckBox android:id="@+id/autostartcheckbox" android:layout_width="wrap_content"
-					android:layout_height="wrap_content" android:text="@string/main_autostart"
-					android:layout_x="50px" android:layout_y="72px">
-				</CheckBox>
 		
 				<CheckBox android:id="@+id/notifisetting"
 					android:layout_width="wrap_content"
