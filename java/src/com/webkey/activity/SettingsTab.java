@@ -60,8 +60,7 @@ public class SettingsTab extends Activity implements OnClickListener{
 		setContentView(R.layout.settings_tab);
 	    mContext = getApplicationContext();	    
 	    ipc = new Ipc(mContext);
-	                  
-        findViewById(R.id.helpbutton).setOnClickListener(this);
+
 		findViewById(R.id.changeusernamebutton).setOnClickListener(this);
 		findViewById(R.id.edit_portbutton).setOnClickListener(this);
 		findViewById(R.id.servercheckbox).setOnClickListener(this);
@@ -103,11 +102,7 @@ public class SettingsTab extends Activity implements OnClickListener{
 		prefs = PreferenceManager.getDefaultSharedPreferences(getBaseContext());
 		prefsEditor = prefs.edit();
 //		Log.d("Webkey_java: ","Clicked...");
-        switch (v.getId()) {
-        	case R.id.helpbutton:						    			
-    			showDialog(getString(R.string.main_help_txt)+getString(R.string.main_translators),getString(R.string.main_help));  
-    			break;
-    			
+        switch (v.getId()) {    			
         	case R.id.changeusernamebutton:
 				showUsernameDialog();
         		break;

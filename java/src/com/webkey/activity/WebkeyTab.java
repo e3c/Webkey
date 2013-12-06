@@ -96,8 +96,7 @@ public class WebkeyTab extends Activity implements OnClickListener{
         dialog = new ProgressDialog(WebkeyTab.this);                
         
         findViewById(R.id.startbutton).setOnClickListener(this);
-        findViewById(R.id.stopbutton).setOnClickListener(this);       
-        findViewById(R.id.helpbutton).setOnClickListener(this);
+        findViewById(R.id.stopbutton).setOnClickListener(this);
 		
         if((NEW_VERSION != old_ver || old_ver == -1) && waitProgress==false){
         	waitProgress=true;
@@ -107,7 +106,6 @@ public class WebkeyTab extends Activity implements OnClickListener{
         	new UpgradeThread(binIO).start();   		   
 	    }
 	}
-	
 	
 	@Override
 	public void onResume(){		
@@ -192,10 +190,6 @@ public class WebkeyTab extends Activity implements OnClickListener{
                     }
                 }).start();  				
         	    break;
-        	    
-        	case R.id.helpbutton:						    			
-    			showDialog(getString(R.string.main_help_txt)+getString(R.string.main_translators),getString(R.string.main_help));  
-    			break;
 
         	case R.id.usersettingsbtn:
         		Intent UsersActivity = new Intent(getBaseContext(), ManageUsers.class);
