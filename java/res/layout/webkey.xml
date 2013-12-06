@@ -39,11 +39,6 @@
 									android:layout_weight="1" />
 						</TableRow>
 						<TableRow>
-							<Button android:text="@string/main_log_btn" android:id="@+id/logbutton"
-								android:layout_width="0dip" android:layout_height="fill_parent" android:layout_weight="1" 
-								/>
-						</TableRow>
-						<TableRow>
 							<Button android:text="@string/main_donate_btn" android:id="@+id/donate"
 								android:layout_width="0dip" android:layout_height="wrap_content" android:layout_weight="1"
 								android:layout_gravity="center_vertical">

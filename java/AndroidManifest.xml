@@ -69,12 +69,6 @@
                   android:launchMode="singleInstance">
         </activity>
         
-        <activity android:name=".activity.LogView" 
-        		  android:launchMode="singleInstance"        
-                  android:label="@string/app_name">
-        </activity>
-        
-        
         <receiver android:name=".receivers.RemoteRegistrationReceiver">  
                  <intent-filter>  
                         <action android:name="webkey.intent.action.remote.registration"/>    
