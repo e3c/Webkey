@@ -5993,27 +5993,6 @@ netinfo(struct mg_connection *conn,
 }
 
 static void
-brightness(struct mg_connection *conn,
-                const struct mg_request_info *ri, void *data)
-{
-	send_ok(conn);
-	if (ri->permissions != PERM_ROOT)
-		return;
-	lock_wakelock();
-	int fd = open("/sys/class/leds/lcd-backlight/brightness", O_RDONLY);
-	if (fd < 0)
-		fd = open("/sys/class/backlight/pwm-backlight/brightness", O_RDONLY);
-	char value[20];
-	int n;
-	if (fd >= 0)
-	{
-		n = read(fd, value, 10);
-		if (n)
-			mg_printf(conn,"%s: %d%%, ",lang(ri,"Brightness").c_str(),100*getnum(value)/max_brightness);
-		close(fd);
-	}
-}
-static void
 status(struct mg_connection *conn,
                 const struct mg_request_info *ri, void *data)
 {
@@ -7793,8 +7772,6 @@ static void *event_handler(enum mg_event event,
 	adjust_light(conn, request_info, NULL);
   else if (urlcompare(request_info->uri, "/sql"))
 	sql(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/brightness"))
-	brightness(conn, request_info, NULL);
   else if (urlcompare(request_info->uri, "/netinfo"))
 	netinfo(conn, request_info, NULL);
   else if (urlcompare(request_info->uri, "/meminfo"))
