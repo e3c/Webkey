@@ -275,10 +275,6 @@ struct eqstr
 	}
 };
 
-
-static std::map<std::string, std::string> sl4a_requests;
-static std::map<std::string, int> sl4a_requests_rev;
-
 static std::map<std::string, time_t> access_times;
 static std::string logfile;
 
@@ -288,11 +284,6 @@ char manufacturer[PROP_VALUE_MAX];
 static char deflanguage[PROP_VALUE_MAX];//PROP_VALUE_MAX == 92
 
 static bool has_ssl = false;
-
-volatile static int sl4a_port = 0;
-volatile static int sl4a_socket = 0;
-static std::string sl4a_uuid;
-static pthread_mutex_t sl4amutex;
 
 char* humandate(char* buff, long int epoch, int dateformat, int datesep, int datein, int datetimezone);
 static pthread_mutex_t logmutex;
@@ -1038,7 +1029,6 @@ void clear(bool exit = true)
 		pthread_mutex_destroy(&diffmutex);
 		pthread_mutex_destroy(&popenmutex);
 		pthread_mutex_destroy(&logmutex);
-		pthread_mutex_destroy(&sl4amutex);
 		pthread_mutex_destroy(&netmutex);
 		pthread_mutex_destroy(&initfbmutex);
 		pthread_mutex_destroy(&uinputmutex);
@@ -8030,271 +8020,6 @@ getnet(struct mg_connection *conn,
 		sqlite3_free(zErrMsg);
 	}
 }
-static void
-set_sl4a(struct mg_connection *conn,
-                const struct mg_request_info *ri, void *data)
-{
-//	printf("set_sl4a\n");
-//	fflush(NULL);
-	if (ri->remote_ip!=2130706433 || strcmp(ri->remote_user,"JAVA_CLIENT") != 0) //localhost
-		return;
-	sl4a_port = getnum(ri->uri+9);
-	int i = 9;
-	while (ri->uri[i] && ri->uri[i] != '_')
-		i++;
-	if (ri->uri[i])
-		sl4a_uuid = ri->uri+i+1;
-//	printf("port = %d\n",sl4a_port);
-//	printf("str = %s\n",sl4a_uuid.c_str());
-//	fflush(NULL);
-	send_ok(conn);
-}
-
-static std::string request_sl4a(struct mg_connection *conn, const char* request)
-{
-	std::string ret;
-	char buf[10240];
-	for (int i = 0; i < 30; i++)
-	{
-//	printf("in cycle %d\n",i);
-//	fflush(NULL);
-		if (sl4a_socket ==0)
-		{
-			if ((sl4a_socket = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
-//				printf("error opening socket from webkey.c\n");
-				sleep(1);
-				sl4a_socket = 0;
-				continue;
-			}
-			struct sockaddr_in addr;
-			addr.sin_addr.s_addr = 	inet_addr("127.0.0.1");
-			addr.sin_port = htons(sl4a_port);
-			addr.sin_family = AF_INET;
-//	printf("before connect\n");
-//		fflush(NULL);
-			if (sl4a_port == 0 || connect(sl4a_socket, (struct sockaddr *)&addr, sizeof(struct sockaddr_in)) < 0)
-			{
-				shutdown(sl4a_socket,SHUT_RDWR);
-				close(sl4a_socket);
-//				printf("unable to connect to sl4a from webkey.c\n");
-				if (i%10 == 0)
-					syst("/system/bin/am broadcast -a \"webkey.intent.action.SL4a.START\" -n \"com.webkey/.SL4A\"");
-				sleep(1);
-				sl4a_socket = 0;
-				continue;
-			}
-//			printf("connected, before send\n");
-//		fflush(NULL);
-//			printf("%s\n",request);
-			std::string str = "{\"params\": [\"";
-			str = str + sl4a_uuid.c_str();
-			str = str + "\"], \"id\": 0, \"method\": \"_authenticate\"}\n";
-//			printf("%s\n",str.c_str());
-//		fflush(NULL);
-			if (send(sl4a_socket, str.c_str(), str.size(), MSG_NOSIGNAL) < 0)
-			{
-				shutdown(sl4a_socket,SHUT_RDWR);
-				close(sl4a_socket);
-//				printf("unable to send data to SL4A after connection, retrying\n");
-				sleep(1);
-				sl4a_socket = 0;
-				continue;
-			}
-			bzero(buf, sizeof(buf));
-//		printf("before auth read\n");
-//		fflush(NULL);
-			if (read(sl4a_socket, buf, sizeof(buf)-1) == 0)
-			{
-				shutdown(sl4a_socket,SHUT_RDWR);
-				close(sl4a_socket);
-//				printf("unable to read data from SL4A after connection, retrying\n");
-				sleep(1);
-				sl4a_socket = 0;
-				continue;
-			}
-//			printf("%s\n",buf);
-		}
-		bzero(buf, sizeof(buf));
-//	printf("before send: %s\n",request);
-//	fflush(NULL);
-		int n = strlen(request);
-		if (send(sl4a_socket, request, n,MSG_NOSIGNAL) <=0 || (request[n-1] != '\n' && send(sl4a_socket, "\n", 1,MSG_NOSIGNAL)<=0))
-		{
-			shutdown(sl4a_socket,SHUT_RDWR);
-			close(sl4a_socket);
-			sl4a_socket = 0;
-			continue;
-		}
-//	printf("before read\n");
-//	fflush(NULL);
-		int r = 0;
-		while ((r = read(sl4a_socket, buf, sizeof(buf)-1)) > 0)
-		{
-//			if (buf[r-1] == '\n')
-//				buf[r-1] = 0;
-//			printf("%s\n",buf);
-//			mg_write(conn,buf,strlen(buf));
-			ret = ret + buf;
-			if (buf[r-1] == '\n')
-				break;
-			bzero(buf, sizeof(buf));
-		}
-		//shutdown(s,SHUT_RDWR);
-		//close(s);
-		break;
-	}
-	return ret;
-}
-static void
-sl4a(struct mg_connection *conn,
-                const struct mg_request_info *ri, void *data)
-{
-//	printf("got request\n");
-//	fflush(NULL);
-	if (ri->permissions != PERM_ROOT)
-		return;
-	access_log(ri,"sl4a");
-	send_ok(conn);
-	lock_wakelock();
-	char* post_data;
-	int post_data_len;
-	read_post_data(conn,ri,&post_data,&post_data_len);
-	if (!post_data)
-		return;
-	pthread_mutex_lock(&sl4amutex);
-	std::string ret = request_sl4a(conn,post_data);
-	mg_write(conn,ret.c_str(),ret.size());
-	pthread_mutex_unlock(&sl4amutex);
-	if (post_data)
-		delete[] post_data;
-}
-static void
-sl4as(struct mg_connection *conn,
-                const struct mg_request_info *ri, void *data)
-{
-//	printf("got request\n");
-//	fflush(NULL);
-	if (ri->permissions != PERM_ROOT)
-		return;
-	access_log(ri,"sl4a");
-	send_ok(conn);
-	lock_wakelock();
-	char* post_data;
-	int post_data_len;
-	read_post_data(conn,ri,&post_data,&post_data_len);
-	if (!post_data)
-		return;
-	pthread_mutex_lock(&sl4amutex);
-	int i = 0;
-	mg_printf(conn,"[");
-	int last = 0;
-	bool first = true;
-	std::string ret;
-	while (i < post_data_len)
-	{
-		if (post_data[i] == '\n')
-		{
-			post_data[i] = 0;
-			if (!first)
-				mg_printf(conn,",");
-			first = false;
-			ret = request_sl4a(conn,post_data+last);
-			mg_write(conn,ret.c_str(),ret.size());
-			last = i+1;
-		}
-		i++;
-	}
-	if (last < i)
-	{
-		if (!first)
-			mg_printf(conn,",");
-		first = false;
-		ret = request_sl4a(conn,post_data+last);
-		mg_write(conn,ret.c_str(),ret.size());
-	}
-	mg_printf(conn,"]");
-	pthread_mutex_unlock(&sl4amutex);
-	if (post_data)
-		delete[] post_data;
-}
-static void
-sl4ascached(struct mg_connection *conn,
-                const struct mg_request_info *ri, void *data)
-{
-//	printf("got request\n");
-//	fflush(NULL);
-	if (ri->permissions != PERM_ROOT)
-		return;
-	access_log(ri,"sl4a");
-	send_ok(conn);
-	lock_wakelock();
-	char* post_data;
-	int post_data_len;
-	read_post_data(conn,ri,&post_data,&post_data_len);
-	if (!post_data)
-		return;
-	pthread_mutex_lock(&sl4amutex);
-	int i = 0;
-	mg_printf(conn,"[");
-	int last = 0;
-	bool first = true;
-	std::string ret;
-	char buff[32];
-	while (i < post_data_len)
-	{
-		if (post_data[i] == '\n')
-		{
-			post_data[i] = 0;
-			int rev = getnum(post_data+last);
-			while(last<i && post_data[last] != '{')
-				last++;
-			ret = request_sl4a(conn,post_data+last);
-			int drev = sl4a_requests_rev[post_data+last];
-			if (ret != sl4a_requests[post_data+last])
-			{
-				sl4a_requests[post_data+last] = ret;
-				sl4a_requests_rev[post_data+last] = ++drev;
-			}
-			if (rev != drev)
-			{
-				if (!first)
-					mg_printf(conn,",");
-				first = false;
-				ret = ret.substr(0,ret.size()-2)+",\"rev\":"+itoa(buff,drev)+"}";
-				mg_write(conn,ret.c_str(),ret.size());
-			}
-			last = i+1;
-		}
-		i++;
-	}
-	if (last < i)
-	{
-		post_data[i] = 0;
-		int rev = getnum(post_data+last);
-		while(last<i && post_data[last] != '{')
-			last++;
-		ret = request_sl4a(conn,post_data+last);
-		int drev = sl4a_requests_rev[post_data+last];
-		if (ret != sl4a_requests[post_data+last])
-		{
-			sl4a_requests[post_data+last] = ret;
-			sl4a_requests_rev[post_data+last] = ++drev;
-		}
-		if (rev != drev)
-		{
-			if (!first)
-				mg_printf(conn,",");
-			first = false;
-			ret = ret.substr(0,ret.size()-2)+",\"rev\":"+itoa(buff,drev)+"}";
-			mg_write(conn,ret.c_str(),ret.size());
-		}
-		last = i+1;
-	}
-	mg_printf(conn,"]");
-	pthread_mutex_unlock(&sl4amutex);
-	if (post_data)
-		delete[] post_data;
-}
 
 static void *event_handler(enum mg_event event,
                            struct mg_connection *conn,
@@ -8398,14 +8123,6 @@ static void *event_handler(enum mg_event event,
 	sql(conn, request_info, NULL);
   else if (urlcompare(request_info->uri, "/getnet"))
 	getnet(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/sl4a"))
-	sl4a(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/sl4as"))
-	sl4as(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/sl4ascached"))
-	sl4ascached(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/set_sl4a*"))
-	set_sl4a(conn, request_info, NULL);
   else if (urlcompare(request_info->uri, "/brightness"))
 	brightness(conn, request_info, NULL);
   else if (urlcompare(request_info->uri, "/netinfo"))
@@ -8744,7 +8461,6 @@ int main(int argc, char **argv)
 	printf("dir: %s\n",dir.c_str());
 	logfile = dir+"log.txt";
 	pthread_mutex_init(&logmutex, NULL);
-	pthread_mutex_init(&sl4amutex, NULL);
 	pthread_mutex_init(&netmutex, NULL);
 	pthread_mutex_init(&initfbmutex, NULL);
 	access_log(NULL,"service's started");

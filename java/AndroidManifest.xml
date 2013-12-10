@@ -75,12 +75,6 @@
                  </intent-filter>   
 		</receiver>
 		
-		<receiver android:name=".SL4A"> 
-			<intent-filter> 
-				<action android:name="webkey.intent.action.SL4A.START" />
-			</intent-filter> 
-		</receiver>
-		
 		<receiver android:name=".Widget" android:label="@string/app_name">                  
             <intent-filter>
             	<action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
