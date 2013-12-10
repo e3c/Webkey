@@ -653,7 +653,7 @@ function adjust(i)
 </td>
 <td valign="top">
 	<div id="rightmenu">
-		<div class="right-container">
+		<div class="right-container" style="display:none;">
 			<div class="right-header"><span>`Screen properties`</span></div>
 			<div class="toggleable">
 				<div class="widget" id="lowreswidget"><input type="checkbox" id="lowres" onclick="updatecookies()" >`Low resolution`</input></div>
@@ -674,132 +674,9 @@ function adjust(i)
 			</div>
 		</div>
 <<ADMIN
-		<div class="right-container">
-			<div class="right-header"><span>`Typing properties`</span></div>
-			<div class="toggleable">
-				<div class="widget" id="sendtypingwidget">
-					<input type="checkbox" id="sendtyping" checked="checked" onclick="document.getElementById('sendonenter').checked = false;updatecookies()">`Send while typing`</input>
-				</div>
-				<div class="widget" id="sendonenterwidget">
-					<input type="checkbox" id="sendonenter" onclick="document.getElementById('sendtyping').checked = false;updatecookies()">`Send on Enter`</input>
-				</div>
-				<div class="widget" id="smswidget">
-					<input type="checkbox" id="sms" onclick="updatecookies()">`SMS mode`</input><br>
-				</div>
-				<div class="widget" id="resendbuttonwidget">
-					<input id="resendbutton" type="button" class="butt" value="`Send text`" onclick="resend()"><br>
-				</div>
-				<div class="widget" id="configbuttonswidget">
-					<input id="configbuttons" type="button" class="butt" value="`Config buttons`" onclick="window.location = 'config_buttons.html'">
-				</div>
-				<div class="widget" id="configkeyswidget">
-					<input id="configkeys" type="button" class="butt" value="`Config keys`" onclick="window.location = 'config_keys.html'"><br>
-				</div>
-				<!--				
-				<div class="widget" id="gamemodewidget">
-					<input type="checkbox" id="gamemode" onclick="updatecookies()">`Game mode`</input><br>
-				</div>
-				<div class="widget" id="gamemodebuttonswidget">
-					<input id="gamemodebutton" type="button" class="butt" value="`Configure game mode`" onclick="window.location = 'config_game_mode.html'">
-				</div>
-				-->
-			</div>
-		</div>
-		<div class="right-container">
-			<div class="right-header"><span>`Open, call, run`</span></div>
-			<div class="toggleable">
-				<div class="widget" id="uriwidget">
-					<input class="inputtext" type="text" id="uri" value="http://" rows="1" onkeydown="if (event.keyCode==13) {document.getElementById('urisend').click(); return false;}">
-					<input id="urisend" type="button" class="butt" value="`Open in browser`" onclick=intent('android.intent.action.VIEW',document.getElementById('uri').value)>
-				</div>
-				<div class="widget" id="dialwidget">
-					<input class="inputtext" type="text" id="dial" value="" rows="1" onkeydown="if (event.keyCode==13) {document.getElementById('callsend').click(); return false;}">
-					<input id="callsend" type="button" class="butt" value="`Call`" onclick="call(document.getElementById('dial').value)">
-					<input id="dialsend" type="button" class="butt" value="`Dial`" onclick=intent('android.intent.action.DIAL','tel:'+document.getElementById('dial').value)>
-				</div>
-				<div class="widget" id="runwidget">
-					<input class="inputtext" type="text" id="run" value="ls -l -a" rows="1" onkeydown="if (event.keyCode==13) {document.getElementById('runsend').click(); return false;}">
-					<input id="runsend" type="button" class="butt" value="`Run`" onclick="runline(document.getElementById('run').value)">
-				</div>
-			</div>
-		</div>
+		
+
 >>
-		<div class="right-container">
-			<div class="right-header" id="phoneinfo"><span class="strong">`Phone info`</span></div>
-			<div class="toggleable">
-				<div class="widget" id="clipboardwidget">`Clipboard`: <span id="clipboard" class="strong"></span></div>
-				<div class="widget auto-widget" id="getScreenTimeout">`Screen timeout`: </div>
-				<div class="widget auto-widget" id="getDeviceId">`IMEI/MEID`: </div>
-				<div class="widget auto-widget" id="getLine1Number">`Phone number`: </div>
-				<div class="widget auto-widget" id="getNetworkOperatorName">`Network operator name`: </div>
-				<div class="widget auto-widget" id="getNetworkType">`Network type`: </div>
-				<div class="widget auto-widget" id="getSimOperatorName">`SIM operator name`: </div>
-				<div class="widget auto-widget" id="getSimSerialNumber">`SIM serial number`: </div>
-				<div class="widget auto-widget" id="getSubscriberId">`Subscriber ID`: </div>
-			</div>
-		</div>
-		<div class="right-container">
-			<div class="right-header" id="phoneutils"><span>`Phone utils`</span></div>
-			<div class="toggleable">
-				<div id="light" class="widget"> </div>
-				<div class="widget" id="toastwidget">
-					<input class="inputtext" type="text" id="toast" value="" rows="1" onkeydown="if (event.keyCode==13) {$('#toastsend').click(); return false;}">
-					<input id="toastsend" type="button" class="butt" value="`Send toast`" onclick="sendtoast()">
-					<input id="vibratebutton" type="button" class="butt" value="`Vibrate`" onclick="sl4a('vibrate',[300])">
-				</div>
-			</div>
-		</div>
-		<div class="right-container" id="runapplication">
-			<div class="right-header"><span>`Run application`</span></div>
-			<div class="toggleable">
-			</div>
-		</div>
-		<div class="right-container" id="closeapplication">
-			<div class="right-header"><span>`Close application`</span></div>
-			<div class="toggleable">
-			</div>
-		</div>
-		<div class="right-container" id="killapplication">
-			<div class="right-header"><span>`Kill application`</span></div>
-			<div class="toggleable">
-			</div>
-		</div>
-		<div class="right-container" id="runapplication">
-			<div class="right-header"><span>`Volume`</span></div>
-			<div class="toggleable">
-				<div class="widget" id="volumeringerwidget">
-					`Ringer`: 
-					<div id="volumeringer"></div>
-				</div>
-				<div class="widget" id="volumemediawidget">
-					`Media`: 
-					<div id="volumemedia"></div>
-				</div>
-			</div>
-		</div>
-		<div class="right-container" id="wifi">
-			<div class="right-header"><span>`Wifi`</span></div>
-			<div class="toggleable">
-			</div>
-		</div>
-		<div class="right-container" id="buttons">
-			<div class="right-header"><span>`Buttons`</span></div>
-			<div class="toggleable">
-				<<BUTTONS>>
-			</div>
-		</div>
-		<div class="right-container" id="development">
-			<div class="right-header"><span>`Development`</span></div>
-			<div class="toggleable">
-				<div class="widget" id="sl4awidget">
-					<input class="inputtext" type="text" id="sl4acommand" value="getLastKnownLocation()" rows="1" onkeydown="if (event.keyCode==13) {document.getElementById('sl4arun').click(); return false;}">
-					<input id="sl4arun" type="button" class="butt" value="`Run SL4A request`" onclick="customSl4aCall()"> <a href="http://code.google.com/p/android-scripting/wiki/ApiReference" target="_blank">API ref</a>
-				</div>
-				<div class="widget" id="translate">
-					<a href="http://webkey.cc/html/language/" target="_blank">Translate Webkey</a>
-				</div>
-			</div>
-		</div>
 	</div> <!-- rightmenu -->
 </td>
 </tr>
