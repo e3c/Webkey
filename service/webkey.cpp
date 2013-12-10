@@ -4465,8 +4465,6 @@ sendmenu(struct mg_connection *conn,
 		mg_printf(conn,"<li><a href=\"terminal.html\" target=\"_top\"><span>%s</span></a></li> ",lang(ri,"Terminal").c_str());
 	}
 	//if (ri->permissions == PERM_ROOT)
-	if (ri->permissions == PERM_ROOT || (ri->permissions&PERM_FILES) || (ri->permissions&PERM_PUBLIC))
-		mg_printf(conn,"<li><a href=\"files.html\" target=\"_top\"><span>%s</span></a></li> ",lang(ri,"Files").c_str());
 //	mg_printf(conn,"<a href=\"help.html\" target=\"_top\">help</a> <a href=\"\" onclick=\"document.location.replace(document.location.href.replace(/:\\/\\//,':\\/\\/logout:logout@'))\"target=\"_top\">log out</a></div>");
 //	mg_printf(conn,"<a href=\"help.html\" target=\"_top\">help</a> <a href=\"logout\" onclick=\"try {document.execCommand('ClearAuthenticationCache');} catch (exception) {}; document.location=document.location.href.replace(/:\\/\\//,':\\/\\/logout:logout@')\" target=\"_top\">log out</a></div>");
 	mg_printf(conn,"<li><a href=\"help.html\" target=\"_top\"><span>%s</span></a></li> ",lang(ri,"Help").c_str());
@@ -7935,7 +7933,6 @@ static void *event_handler(enum mg_event event,
 		  urlcompare(request_info->uri, "/pure_menu_nochat.html")||
 		  urlcompare(request_info->uri, "/chat.html")||
 		  urlcompare(request_info->uri, "/sms.html")||
-		  urlcompare(request_info->uri, "/files.html")||
 		  urlcompare(request_info->uri, "/terminal.html")||
 		  urlcompare(request_info->uri, "/js/webkey.js") ||
 		  urlcompare(request_info->uri, "/js/screenshot.js")
