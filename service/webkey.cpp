@@ -4467,7 +4467,6 @@ sendmenu(struct mg_connection *conn,
 	//if (ri->permissions == PERM_ROOT)
 //	mg_printf(conn,"<a href=\"help.html\" target=\"_top\">help</a> <a href=\"\" onclick=\"document.location.replace(document.location.href.replace(/:\\/\\//,':\\/\\/logout:logout@'))\"target=\"_top\">log out</a></div>");
 //	mg_printf(conn,"<a href=\"help.html\" target=\"_top\">help</a> <a href=\"logout\" onclick=\"try {document.execCommand('ClearAuthenticationCache');} catch (exception) {}; document.location=document.location.href.replace(/:\\/\\//,':\\/\\/logout:logout@')\" target=\"_top\">log out</a></div>");
-	mg_printf(conn,"<li><a href=\"help.html\" target=\"_top\"><span>%s</span></a></li> ",lang(ri,"Help").c_str());
 	mg_printf(conn,"<li id=\"menulastli\"></li></ul></div>");
 //	mg_printf(conn,"<li><span>Webkey %s<br/> %s</span></li> ",VERSION, ri->remote_user);
 //	mg_printf(conn,"<li> <a href=\"config\" target=\"_top\"><span>%s</span></a>",lang(ri,"Config").c_str());
@@ -7928,7 +7927,6 @@ static void *event_handler(enum mg_event event,
       index(conn, request_info, NULL);
   }
   else if (urlcompare(request_info->uri, "/main.html")||
-		  urlcompare(request_info->uri, "/help.html")||
 		  urlcompare(request_info->uri, "/pure_menu.html")||
 		  urlcompare(request_info->uri, "/pure_menu_nochat.html")||
 		  urlcompare(request_info->uri, "/chat.html")||
