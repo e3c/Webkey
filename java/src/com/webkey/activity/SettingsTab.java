@@ -121,14 +121,7 @@ public class SettingsTab extends Activity implements OnClickListener{
 	            ipc.comBinAuth("reread");
 	            refresh();
 	            break;
-		    
-        	case R.id.allow_remote_reg:
-        		boolean state = ((CompoundButton) findViewById(R.id.allow_remote_reg)).isChecked();
-        		prefsEditor.putBoolean("allowremotereg", state);
-        		prefsEditor.commit();
-//n        		Log.d("Webkey_java: ", "commit");
-        		break;
-        		
+
         	case R.id.notifisetting:
 		        if (((CompoundButton) findViewById(R.id.notifisetting)).isChecked()) {
 		        	notifyBarPref = true;
