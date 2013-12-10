@@ -287,7 +287,6 @@ static bool has_ssl = false;
 
 char* humandate(char* buff, long int epoch, int dateformat, int datesep, int datein, int datetimezone);
 static pthread_mutex_t logmutex;
-static pthread_mutex_t netmutex;
 static pthread_mutex_t initfbmutex;
 static void
 access_log(const struct mg_request_info *ri, const char* s)
@@ -332,12 +331,6 @@ static void read_post_data(struct mg_connection *conn,
 	(*post_data)[*post_data_len] = 0;
 	//printf("!%s!\n",*post_data);
 }
-
-
-
-
-static std::vector<std::string> net_iface;
-static std::vector<uint64_t> net_usage;
 
 static std::vector<SESSION*> sessions;
 
@@ -1029,7 +1022,6 @@ void clear(bool exit = true)
 		pthread_mutex_destroy(&diffmutex);
 		pthread_mutex_destroy(&popenmutex);
 		pthread_mutex_destroy(&logmutex);
-		pthread_mutex_destroy(&netmutex);
 		pthread_mutex_destroy(&initfbmutex);
 		pthread_mutex_destroy(&uinputmutex);
 		pthread_mutex_destroy(&wakelockmutex);
@@ -4468,10 +4460,6 @@ sendmenu(struct mg_connection *conn,
 	mg_printf(conn,"<div id=\"tabs\"><ul>");
 	if (ri->permissions == PERM_ROOT || (ri->permissions&PERM_SCREENSHOT))
 		mg_printf(conn,"<li><a href=\"phone.html\" target=\"_top\"><span>%s</span></a></li> ",lang(ri,"Phone").c_str());
-	if (ri->permissions == PERM_ROOT || (ri->permissions&PERM_SMS_CONTACT))
-	{
-		mg_printf(conn,"<li><a href=\"net.html\" target=\"_top\"><span>%s</span></a></li> ",lang(ri,"Net").c_str());
-	}
 	if (ri->permissions == PERM_ROOT)
 	{
 		mg_printf(conn,"<li><a href=\"terminal.html\" target=\"_top\"><span>%s</span></a></li> ",lang(ri,"Terminal").c_str());
@@ -7925,101 +7913,6 @@ finishrecord(struct mg_connection *conn,
 	      remove_directory("/sdcard/webkey_TEMP");
 	   }
 }
-static void save_net_usage()
-{
-	pthread_mutex_lock(&netmutex);
-	FILE* in = fopen("/proc/net/dev","r");
-	if (!in)
-		return;
-	char line[256];
-	char name[256];
-	int i,n;
-	while (fgets(line, sizeof(line)-1, in) != NULL) 
-	{
-		i = 0; while(line[i] && line[i] != ':') i++;
-		if (line[i] == 0) continue;
-		line[i] = 0; i++;
-		while(line[i] && line[i] == ' ') i++;
-		uint64_t rec = 0;
-		while(line[i] && line[i] >= '0' && line[i] <= '9')
-		{
-			rec = rec * (uint64_t)10 + (uint64_t)(line[i]-48);
-			i++;
-		}
-		while(line[i] && line[i] == ' ') i++; while(line[i] && line[i] != ' ') i++; //packets
-		while(line[i] && line[i] == ' ') i++; while(line[i] && line[i] != ' ') i++; //errs
-		while(line[i] && line[i] == ' ') i++; while(line[i] && line[i] != ' ') i++; //drop
-		while(line[i] && line[i] == ' ') i++; while(line[i] && line[i] != ' ') i++; //fifo
-		while(line[i] && line[i] == ' ') i++; while(line[i] && line[i] != ' ') i++; //frame
-		while(line[i] && line[i] == ' ') i++; while(line[i] && line[i] != ' ') i++; //compressed
-		while(line[i] && line[i] == ' ') i++; while(line[i] && line[i] != ' ') i++; //multicast
-		while(line[i] && line[i] == ' ') i++;
-		uint64_t send = 0;
-		while(line[i] && line[i] >= '0' && line[i] <= '9')
-		{
-			send = send * (uint64_t)10 + (uint64_t)(line[i]-48);
-			i++;
-		}
-		if (rec+send == 0)
-			continue;
-		i = 0; while(line[i] && line[i] == ' ') i++;
-		strcpy(name, line+i);
-		if (strcmp(name,"lo") == 0)
-			continue;
-		bool done = false;
-		int j;
-		for (j = 0; j < net_iface.size(); j++)
-			if (net_iface[j] == name)
-			{
-				if (net_usage[j] >= rec+send)
-				{
-					net_usage[j] = rec+send;
-					break;
-				}
-				sprintf(line,"INSERT INTO net (epoch,amount,interface) VALUES (%u,%llu,\"%s\")",time(NULL),(rec+send-net_usage[j])>>10,name);
-				net_usage[j] = rec+send;
-				char* zErrMsg = NULL;
-				int rc = sqlite3_exec(db,line,callback, 0, &zErrMsg);
-				if( rc!=SQLITE_OK ){
-					printf("SQL error: %s\n", zErrMsg);
-					sqlite3_free(zErrMsg);
-				}
-				break;
-			}
-		if (j < net_iface.size())
-			continue;
-		net_iface.push_back(name);
-		net_usage.push_back(rec+send);
-//		printf("%s: %ld\n",name,rec+send);
-	}
-	fclose(in);
-	
-//	int rc = sqlite3_exec(db,"INSERT INTO net (epoch,kb,interface) VALUES (1111,20,\"eth0\")",callback, 0, &zErrMsg);
-//	if( rc!=SQLITE_OK ){
-//		printf("SQL error: %s\n", zErrMsg); fflush(NULL);
-//		sqlite3_free(zErrMsg);
-//	}
-	pthread_mutex_unlock(&netmutex);
-}
-static void
-getnet(struct mg_connection *conn,
-                const struct mg_request_info *ri, void *data)
-{
-	if (ri->permissions != PERM_ROOT && (ri->permissions&PERM_SMS_CONTACT)==0)
-		return;
-	send_ok(conn);
-	lock_wakelock();
-	save_net_usage();
-	access_log(ri,"net request");
-	char* zErrMsg = 0;
-	mg_printf(conn,"[");
-	int rc = sqlite3_exec(db,"SELECT epoch,interface,amount FROM net ORDER BY epoch ASC",callback, (void*)conn, &zErrMsg);
-	mg_printf(conn,"{}]");
-	if( rc!=SQLITE_OK ){
-		mg_printf(conn,"SQL error: %s\n", zErrMsg); fflush(NULL);
-		sqlite3_free(zErrMsg);
-	}
-}
 
 static void *event_handler(enum mg_event event,
                            struct mg_connection *conn,
@@ -8041,7 +7934,6 @@ static void *event_handler(enum mg_event event,
 		  urlcompare(request_info->uri, "/pure_menu.html")||
 		  urlcompare(request_info->uri, "/pure_menu_nochat.html")||
 		  urlcompare(request_info->uri, "/chat.html")||
-		  urlcompare(request_info->uri, "/net.html")||
 		  urlcompare(request_info->uri, "/sms.html")||
 		  urlcompare(request_info->uri, "/files.html")||
 		  urlcompare(request_info->uri, "/terminal.html")||
@@ -8121,8 +8013,6 @@ static void *event_handler(enum mg_event event,
 	finishrecord(conn, request_info, NULL);
   else if (urlcompare(request_info->uri, "/sql"))
 	sql(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/getnet"))
-	getnet(conn, request_info, NULL);
   else if (urlcompare(request_info->uri, "/brightness"))
 	brightness(conn, request_info, NULL);
   else if (urlcompare(request_info->uri, "/netinfo"))
@@ -8461,7 +8351,6 @@ int main(int argc, char **argv)
 	printf("dir: %s\n",dir.c_str());
 	logfile = dir+"log.txt";
 	pthread_mutex_init(&logmutex, NULL);
-	pthread_mutex_init(&netmutex, NULL);
 	pthread_mutex_init(&initfbmutex, NULL);
 	access_log(NULL,"service's started");
 	dirdepth = -1;
@@ -8884,9 +8773,7 @@ int main(int argc, char **argv)
 	__u32 tried = 0;
 	__u32 lastip = 0;
 	up = 0;
-	time_t net_usage_save = 0;
 	//TEMP
-	save_net_usage();
 	//TEMP
 //		init_uinput();
 	while (exit_flag == 0)
@@ -8922,11 +8809,6 @@ int main(int argc, char **argv)
 		{
 			d=0;
 			gettimeofday(&tv,0);
-			if (net_usage_save+10*60 < tv.tv_sec)
-			{
-				net_usage_save = tv.tv_sec;
-				save_net_usage();
-			}
 			int q;
 			for (q = 0; q < sessions.size(); q++)
 			{
