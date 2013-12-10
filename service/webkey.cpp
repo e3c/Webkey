@@ -382,9 +382,6 @@ volatile static bool firstfb = false;
 volatile static int up = 0;
 volatile static int shutdownkey_up = -1;
 
-volatile static bool recording = false;
-volatile static int recordingnum = 0;
-volatile static int recordingnumfinished = -1;
 static void
 signal_handler(int sig_num)
 {
@@ -1984,37 +1981,17 @@ void update_image(int orient,int lowres, bool png, bool flip, bool reread)
 	struct jpeg_error_mgr jerr;
 
 	std::string path = "tmp";
-	bool rec = false;
-	if (recording)
-	{
-		rec = true;
-		char num[32];
-		path = std::string("/sdcard/webkey_TEMP/screenshot_");
-		itoa(num,recordingnum++);
-		int l = strlen(num);
-		if (l<2)
-			path = path+"0";
-		if (l<3)
-			path = path+"0";
-		path = path + num;
-	}
 
 	if (png)
 	{
 		path = path + ".png";
-		if (rec)
-			fp = fopen(path.c_str(), "wb");
-		else
-			fp = fo(path.c_str(), "wb");
+		fp = fo(path.c_str(), "wb");
 		if (!fp)
 			return;
 		png_ptr = png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
 		info_ptr = png_create_info_struct(png_ptr);
 		png_init_io(png_ptr, fp);
-		if (rec)
-			png_set_compression_level(png_ptr, 0);
-		else
-			png_set_compression_level(png_ptr, 1);
+		png_set_compression_level(png_ptr, 1);
 		if (orient == 0)
 			png_set_IHDR(png_ptr, info_ptr, scrinfo.xres>>lowres, scrinfo.yres>>lowres,
 				8,//  scrinfo.bits_per_pixel,
@@ -2029,10 +2006,7 @@ void update_image(int orient,int lowres, bool png, bool flip, bool reread)
 	else
 	{
 		path = path + ".jpg";
-		if (rec)
-			fp = fopen(path.c_str(), "wb");
-		else
-			fp = fo(path.c_str(), "wb");
+		fp = fo(path.c_str(), "wb");
 		if (!fp)
 			return;
 		JSAMPROW row_pointer[1];
@@ -2505,10 +2479,6 @@ void update_image(int orient,int lowres, bool png, bool flip, bool reread)
 		jpeg_destroy_compress( &cinfo );
 	}
 	fclose(fp);
-	if (recording)
-		recordingnumfinished = recordingnum-1;
-	else
-		recordingnumfinished = -1;
 
 //	pthread_mutex_lock(&diffmutex);
 //	pthread_cond_broadcast(&diffstartcond);
@@ -2639,18 +2609,9 @@ void* watchscreen(void* param)
 				break;
 
 			l++;
-			if (recording)
-			{
-				if (l > 3000)
-					break;
-				usleep(10000);
-			}
-			else
-			{
-				if (l > 600)
-					break;
-				usleep(150000);
-			}
+			if (l > 600)
+				break;
+			usleep(150000);
 		}
 		if (picchanged == false)
 		{
@@ -5472,39 +5433,9 @@ screenshot(struct mg_connection *conn,
 		init_fb();
 	FILE* f;
 	std::string path = dir+"tmp";
-	if (!recording)
-	{
-//		if (!pthread_mutex_trylock(&pngmutex))
-//		{
-//			update_image(orient,lowres,png,flip);
-//			pthread_mutex_unlock(&pngmutex);
-//		}
-//		else
-//		{
-//			pthread_mutex_lock(&pngmutex);
-//			pthread_mutex_unlock(&pngmutex);
-//		}
-		pthread_mutex_lock(&pngmutex);
-		update_image(orient,lowres,png,flip,!wait);
-		pthread_mutex_unlock(&pngmutex);
-	}
-	else
-	{
-		char num[32];
-		path = "/sdcard/webkey_TEMP/screenshot_";
-		pthread_mutex_lock(&pngmutex);
-		int fin = recordingnumfinished;
-		pthread_mutex_unlock(&pngmutex);
-		itoa(num,fin);
-		int l = strlen(num);
-		if (l<2)
-			path = path+"0";
-		if (l<3)
-			path = path+"0";
-		path = path + num;
-		if (fin < 0)
-			path = dir+"tmp";
-	}
+	pthread_mutex_lock(&pngmutex);
+	update_image(orient,lowres,png,flip,!wait);
+	pthread_mutex_unlock(&pngmutex);
 	if (png)
 	{
 		path += ".png";
@@ -6202,11 +6133,6 @@ status(struct mg_connection *conn,
 		if (n)
 			mg_printf(conn,"%s: %d%%, ",lang(ri,"Brightness").c_str(),100*getnum(value)/max_brightness);
 		close(fd);
-	}
-	if (recording)
-	{
-		mg_printf(conn,"<span style=\"color: red\">%s %d ",lang(ri,"Recorded").c_str(),recordingnum);
-		mg_printf(conn,"%s</span>, ",lang(ri,"images").c_str());
 	}
 }
 
@@ -7773,143 +7699,6 @@ shellinabox(struct mg_connection *conn,
   delete[] t;
   pthread_mutex_unlock(&(session->mutex));
 }
-static void
-startrecord(struct mg_connection *conn,
-                const struct mg_request_info *ri, void *data)
-{
-	if (ri->permissions != PERM_ROOT && (ri->permissions&PERM_SCREENSHOT)==0)
-		return;
-	lock_wakelock();
-	access_log(ri,"record screenshots");
-	int st = mkdir("/sdcard/webkey_TEMP", 0777);
-	int orient = 0;
-	bool png = false;
-	if (ri->uri[12] == 'p')
-		png = true;
-	if (ri->uri[16] == 'h') // horizontal
-		orient = 1;
-	int lowres = 0;
-	if (ri->uri[17] == 'l') // low res
-		lowres = 1;
-	firstfb = false;
-	if (ri->uri[18] == 'f') // first fb
-		firstfb = true;
-	bool flip = false;
-	if (ri->uri[19] == 'f') // flip
-		flip = true;
-	recordingnum = 0;
-	recordingnumfinished = -1;
-	recording = true;
-	while (recording && recordingnum < 1000)
-	{
-		if (!pict)
-			init_fb();
-		if (!pthread_mutex_trylock(&pngmutex))
-		{
-//			printf("A\n");
-			update_image(orient,lowres,png,flip,false);
-			pthread_mutex_unlock(&pngmutex);
-		}
-		else
-		{
-//			printf("B\n");
-			pthread_mutex_lock(&pngmutex);
-			pthread_mutex_unlock(&pngmutex);
-		}
-		lastorient = orient;
-		lastflip = flip;
-		if (!picchanged)
-		{
-//			printf("C\n");
-//			printf("picchanged = %d\n",picchanged);
-			pthread_mutex_lock(&diffmutex);
-			pthread_cond_broadcast(&diffstartcond);
-			if (!exit_flag)
-				pthread_cond_wait(&diffcond,&diffmutex);
-			pthread_mutex_unlock(&diffmutex);
-//			printf("picchanged = %d\n",picchanged);
-		}
-	}
-	send_ok(conn);
-}
-static void
-finishrecord(struct mg_connection *conn,
-                const struct mg_request_info *ri, void *data)
-{
-	if (ri->permissions != PERM_ROOT && (ri->permissions&PERM_SCREENSHOT)==0)
-		return;
-	lock_wakelock();
-	recording = false;
-	pthread_mutex_lock(&pngmutex);
-	pthread_mutex_unlock(&pngmutex);
-	zipFile zf = zipOpen("/sdcard/webkey_TEMP/screenshots.zip",0);
-	   DIR *d = opendir("/sdcard/webkey_TEMP/");
-	   size_t path_len = strlen("/sdcard/webkey_TEMP/");
-	   int r = -1;
-	   if (d)
-	   {
-	      struct dirent *p;
-	      r = 0;
-	      while (!r && (p=readdir(d)))
-	      {
-		  int r2 = -1;
-		  char *buf;
-		  size_t len;
-		  int l = strlen(p->d_name);
-		  if (l > 3 && (strcmp(p->d_name+l-3,"jpg") == 0 || !strcmp(p->d_name+l-3, "png")))
-		  {
-			  zip_fileinfo fi;
-			  fi.tmz_date.tm_year = 2010;
-			  fi.dosDate = 0;
-			  fi.internal_fa = 0;
-			  fi.external_fa = 0;
-			  if (strcmp(p->d_name+l-3,"jpg") == 0)
-				  zipOpenNewFileInZip(zf,p->d_name,&fi,NULL,0,NULL,0,"",Z_DEFLATED,Z_DEFAULT_COMPRESSION);
-			  else
-				  zipOpenNewFileInZip(zf,p->d_name,&fi,NULL,0,NULL,0,"",0,0);
-			  FILE* f;
-			  std::string path = std::string("/sdcard/webkey_TEMP/") + p->d_name;
-			  f = fopen(path.c_str(),"rb");
-			  if (!f)
-				  return;
-			  fseek (f , 0 , SEEK_END);
-			  int lSize = ftell (f);
-			  rewind (f);
-			  char* filebuffer = new char[lSize+1];
-			  if(!filebuffer)
-			  {
-				  error("not enough memory for loading tmp.png\n");
-			  }
-			  fread(filebuffer,1,lSize,f);
-			  filebuffer[lSize] = 0;
-			  zipWriteInFileInZip(zf,filebuffer,lSize);
-			  fclose(f);
-			  delete[] filebuffer;
-			  zipCloseFileInZip(zf);
-		  }
-	      }
-	      zipClose(zf,"");
-	      FILE* f;
-	      f = fopen("/sdcard/webkey_TEMP/screenshots.zip","rb");
-	      fseek (f , 0 , SEEK_END);
-	      int lSize = ftell (f);
-	      rewind (f);
-	      char* buf[65536];
-	      if (!f)
-		      return;
-	      send_ok(conn,"Content-Type: application/zip; charset=UTF-8\r\nContent-Disposition: attachment;filename=screenshots.zip",lSize);
-	      while(1)
-	      {
-		      int num_read = 0;
-		      if ((num_read = fread(buf, 1, 65536, f)) == 0)
-			      break;
-		      if (mg_write(conn, buf, num_read) != num_read)
-			      break;
-	      }
-	      fclose(f);
-	      remove_directory("/sdcard/webkey_TEMP");
-	   }
-}
 
 static void *event_handler(enum mg_event event,
                            struct mg_connection *conn,
@@ -8002,10 +7791,6 @@ static void *event_handler(enum mg_event event,
 	shellinabox(conn, request_info, NULL);  
   else if (urlcompare(request_info->uri, "/adjust_light_*"))
 	adjust_light(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/startrecord*"))
-	startrecord(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/finishrecord"))
-	finishrecord(conn, request_info, NULL);
   else if (urlcompare(request_info->uri, "/sql"))
 	sql(conn, request_info, NULL);
   else if (urlcompare(request_info->uri, "/brightness"))
