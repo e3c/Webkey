@@ -9,8 +9,11 @@
  <uses-feature android:name="android.hardware.screen.portrait" android:required="false" />
  <uses-feature android:name="android.hardware.telephony"
   android:required="false" />
-
+ <uses-permission android:name="android.permission.INTERNET" />
+ <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+ 
  <application android:icon="@drawable/icon" android:label="@string/app_name" android:allowBackup="true">
+     
   <activity android:name=".Webkey" android:launchMode="singleInstance"
    android:label="@string/app_name">
    <intent-filter>
@@ -33,14 +36,6 @@
    </intent-filter>
   </activity>
 
-  <activity android:name=".PreparePermissions"
-   android:configChanges="orientation" android:launchMode="singleInstance"
-   android:label="@string/app_name">
-   <intent-filter>
-    <action android:name="android.intent.action.MAIN" />
-   </intent-filter>
-  </activity>
-
   <activity android:name=".ManageUsers" android:configChanges="orientation"
    android:launchMode="singleInstance" android:label="@string/app_name">
    <intent-filter>
@@ -48,43 +43,6 @@
    </intent-filter>
   </activity>
 
-  <activity android:name=".DynDnsSettings" android:label="@string/app_name"
-   android:launchMode="singleInstance" />
+  </application>
 
-
-  <activity android:name=".activity.LogView"
-   android:launchMode="singleInstance" android:label="@string/app_name" />
-
-  <receiver android:name=".receivers.RemoteRegistrationReceiver">
-   <intent-filter>
-    <action android:name="webkey.intent.action.remote.registration" />
-   </intent-filter>
-  </receiver>
-
-
-  <receiver android:name="BootRinstall"
-   android:permission="android.permission.RECEIVE_BOOT_COMPLETED">
-   <intent-filter>
-    <action android:name="android.intent.action.BOOT_COMPLETED" />
-   </intent-filter>
-  </receiver>
-
-  <receiver android:name=".Widget" android:label="@string/app_name">
-   <intent-filter>
-    <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-   </intent-filter>
-   <meta-data android:name="android.appwidget.provider"
-    android:resource="@xml/watch_widget_provider" />
-  </receiver>
-
-  <receiver android:enabled="true" android:name=".NetTest">
-   <intent-filter>
-    <action android:name="android.net.conn.CONNECTIVITY_CHANGE" />
-    <category android:name="android.intent.category.DEFAULT" />
-   </intent-filter>
-  </receiver>
- </application>
-
- <uses-permission android:name="android.permission.INTERNET" />
- <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 </manifest> 
