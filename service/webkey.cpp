@@ -84,7 +84,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 #include "minizip/zip.h"
 
-#include "sqlite/sqlite3.h"
 
 #ifdef ANDROID
 #include <android/log.h>
@@ -131,7 +130,6 @@ static struct pid {
 	pid_t pid;
 } *pidlist;
 
-static sqlite3 *db;
 struct stat info;
 
 
@@ -3020,33 +3018,6 @@ static int callback(void *NotUsed, int argc, char **argv, char **azColName){
 }
 
 
-
-static void
-sql(struct mg_connection *conn,
-                const struct mg_request_info *ri, void *data)
-{
-	if (ri->permissions != PERM_ROOT)
-		return;
-	send_ok(conn);
-	lock_wakelock();
-	access_log(ri,"sql request");
-	char* post_data;
-	int post_data_len;
-	read_post_data(conn,ri,&post_data,&post_data_len);
-	if (post_data_len)
-	{
-		char* zErrMsg = 0;
-		mg_printf(conn,"[");
-		int rc = sqlite3_exec(db,post_data,callback, (void*)conn, &zErrMsg);
-		mg_printf(conn,"]");
-		if( rc!=SQLITE_OK ){
-			mg_printf(conn,"SQL error: %s\n", zErrMsg); fflush(NULL);
-			sqlite3_free(zErrMsg);
-		}
-	}
-	if (post_data)
-		delete[] post_data;
-}
 
 static void
 touch(struct mg_connection *conn,
@@ -6268,42 +6239,6 @@ gpsget(struct mg_connection *conn,
 //	}
 //}
 
-static void load_mimetypes()
-{
-	std::string cmd = dir + "sqlite3 /data/data/com.android.providers.contacts/databases/contacts2.db \'select * from mimetypes\'";
-	pthread_mutex_lock(&popenmutex);
-	fprintf(pipeout,"%s\n",cmd.c_str());
-	fflush(NULL);
-	char buff[LINESIZE];
-	int pos[7];
-	int i;
-	int j;
-	bool first = true;
-	while (fgets(buff, LINESIZE-1, pipein) != NULL)
-	{
-		if (strcmp(buff,"!!!END_OF_POPEN!!!\n")==0)
-			break;
-		i = getnum(buff);
-		if (i>0 && i < 32)
-		{
-			j=0;
-			while(buff[j] && buff[j]!='/' && j<LINESIZE-1)
-				j++;
-			j++;
-			int n = strlen(buff);
-			if (buff[n-1]=='\n')
-				buff[n-1] = 0;
-			if (buff[j])
-			{
-				mimetypes[i] = buff+j;
-//				printf("%d: %s\n",i,mimetypes[i].c_str());
-			}
-		}
-	}
-//        fflush(stdout);
-	fflush(NULL);
-	pthread_mutex_unlock(&popenmutex);
-}
 static void
 smsxml(struct mg_connection *conn,
                 const struct mg_request_info *ri, void *data)
@@ -9729,24 +9664,6 @@ static void *event_handler(enum mg_event event,
 	phoneclearchatmessage(conn, request_info, NULL);
   else if (urlcompare(request_info->uri, "/adjust_light_*"))
 	adjust_light(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/startrecord*"))
-	startrecord(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/finishrecord"))
-	finishrecord(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/sql"))
-	sql(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/getnet"))
-	getnet(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/sl4a"))
-	sl4a(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/sl4as"))
-	sl4as(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/sl4ascached"))
-	sl4ascached(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/set_sl4a*"))
-	set_sl4a(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/brightness"))
-	brightness(conn, request_info, NULL);
   else if (urlcompare(request_info->uri, "/netinfo"))
 	netinfo(conn, request_info, NULL);
   else if (urlcompare(request_info->uri, "/meminfo"))
@@ -9761,70 +9678,12 @@ static void *event_handler(enum mg_event event,
   }
   else if (urlcompare(request_info->uri, "/test"))
 	test(conn, request_info, NULL);
-//  else if (urlcompare(request_info->uri, "/segfault"))
-//  {
-//	  int* i = 0; // go segfault as requested :)
-//	  int j = *i;
-//  }
   else
 	processed = NULL;
 
-/*  if (event == MG_NEW_REQUEST) {
-    if (!request_info->is_ssl) {
-      redirect_to_ssl(conn, request_info);
-    } else if (!is_authorized(conn, request_info)) {
-      redirect_to_login(conn, request_info);
-    } else if (strcmp(request_info->uri, authorize_url) == 0) {
-      authorize(conn, request_info);
-    } else if (strcmp(request_info->uri, "/ajax/get_messages") == 0) {
-      ajax_get_messages(conn, request_info);
-    } else if (strcmp(request_info->uri, "/ajax/send_message") == 0) {
-      ajax_send_message(conn, request_info);
-    } else {
-      // No suitable handler found, mark as not processed. Mongoose will
-      // try to serve the request.
-      processed = NULL;
-    }
-  } else {
-    processed = NULL;
-  }
-*/
   return processed;
 }
 
-static void init_sqlite3()
-{
-	int rc;
-	rc = sqlite3_open((dir+"webkey.db").c_str(), &db);
-	if( rc )
-	{
-		printf("Can't open database: %s\n", sqlite3_errmsg(db));
-		sqlite3_close(db);
-		exit(1);
-	}
-	char *zErrMsg = 0;
-	rc = sqlite3_exec(db,"CREATE TABLE net(p INTEGER PRIMARY KEY ASC, epoch INTEGER, amount INTEGER, interface TEXT);",callback, 0, &zErrMsg);
-	if( rc!=SQLITE_OK ){
-		printf("SQL error: %s\n", zErrMsg); fflush(NULL);
-		sqlite3_free(zErrMsg);
-	}
-	char buf[32];
-	rc = sqlite3_exec(db,(std::string("DELETE FROM net WHERE epoch < ")+itoa(buf,time(NULL)-7776000)+";").c_str(),callback, 0, &zErrMsg);
-	if( rc!=SQLITE_OK ){
-		printf("SQL error: %s\n", zErrMsg); fflush(NULL);
-		sqlite3_free(zErrMsg);
-	}
-//	rc = sqlite3_exec(db,"INSERT INTO net (epoch,kb,interface) VALUES (1111,20,\"eth0\")",callback, 0, &zErrMsg);
-//	if( rc!=SQLITE_OK ){
-//		printf("SQL error: %s\n", zErrMsg); fflush(NULL);
-//		sqlite3_free(zErrMsg);
-//	}
-//	rc = sqlite3_exec(db,"SELECT * FROM net",callback, 0, &zErrMsg);
-//	if( rc!=SQLITE_OK ){
-//		printf("SQL error: %s\n", zErrMsg); fflush(NULL);
-//		sqlite3_free(zErrMsg);
-//	}
-}
 
 int main(int argc, char **argv)
 {
@@ -10095,7 +9954,6 @@ int main(int argc, char **argv)
 			dirdepth++;
 	//printf("%d\n",dirdepth);
 	
-	init_sqlite3();
 
 	port = 81;
 	sslport = 443;
@@ -10657,6 +10515,5 @@ int main(int argc, char **argv)
 	fclose(pipein);
 	close(pipeback[0]);
 	close(pipeforward[1]);
-	sqlite3_close(db);
         return (EXIT_SUCCESS);
 }
