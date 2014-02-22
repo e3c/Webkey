@@ -8,7 +8,7 @@ RUNLIB := ${TOOLCHAIN_PATH}/arm-linux-androideabi-ranlib
 CFLAGS := -I $(ANDROID_NDK)/platforms/android-3/arch-arm/usr/include/ -I $(ANDROID_NDK)/sources/cxx-stl/stlport/stlport/
 CFLAGS += -Wno-write-strings -mthumb -DANDROID -DNOCRYPT -DUSE_FILE32API 
 CFLAGS += -L $(ANDROID_NDK)/platforms/android-3/arch-arm/usr/lib/ 
-CFLAGS += -lc -llog -lz -O2
+CFLAGS += -lc -llog -lz -O2 --sysroot=$(ANDROID_NDK)/platforms/android-3/arch-arm/
 CFLAGS += -fno-exceptions -fno-short-enums
 #CFLAGS += -nostdlib
 
@@ -24,7 +24,6 @@ LDFLAGS += -O2
 LIBS := $(ANDROID_NDK)/sources/cxx-stl/stlport/libs/armeabi/libstlport_static.a
 LIBS += libjpeg.a
 LIBS += libpng12.a 
-LIBS += sqlite3.a
 
 SRCS := minizip/zip.c
 SRCS += minizip/ioapi.c 
@@ -73,11 +72,6 @@ libpng12.a: $(PNGLIBobj)
 
 %.o: %.cpp
 	$(GCC) $(CFLAGS) $(FLAGS) -c "$<" -o "$@"
-
-sqlite3.a : sqlite/sqlite3.h sqlite/sqlite3.c
-	$(CC) $(CFLAGS) $(FLAGS) -c sqlite/sqlite3.c -o sqlite/sqlite3.o
-	$(AR) rvs sqlite3.a sqlite/sqlite3.o
-	$(RUNLIB) sqlite3.a
 
 test.o: test.c suinput.h
 	$(GCC) $(CFLAGS) $(FLAGS) -c "$<" -o "$@"
