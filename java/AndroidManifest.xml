@@ -10,9 +10,7 @@
  <uses-feature android:name="android.hardware.telephony"
   android:required="false" />
 
- <application android:icon="@drawable/icon" android:label="@string/app_name"
-  android:name=".ScriptApplication">
-  <service android:enabled="true" android:name=".ScriptService" />
+ <application android:icon="@drawable/icon" android:label="@string/app_name" android:allowBackup="true">
   <activity android:name=".Webkey" android:launchMode="singleInstance"
    android:label="@string/app_name">
    <intent-filter>
