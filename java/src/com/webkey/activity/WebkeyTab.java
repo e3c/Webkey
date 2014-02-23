@@ -54,7 +54,6 @@ import java.lang.Thread;
 
 import com.webkey.BinIO;
 import com.webkey.Ipc;
-import com.webkey.ManageUsers;
 import com.webkey.R;
 
 public class WebkeyTab extends Activity implements OnClickListener{
@@ -193,11 +192,6 @@ public class WebkeyTab extends Activity implements OnClickListener{
                         mHandler.sendEmptyMessage(MSG_LOADING_DISMISS);
                     }
                 }).start();
-                break;
-
-            case R.id.usersettingsbtn:
-                Intent UsersActivity = new Intent(getBaseContext(), ManageUsers.class);
-                startActivity(UsersActivity);
                 break;
         }
 

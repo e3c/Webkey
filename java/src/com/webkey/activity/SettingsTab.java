@@ -41,7 +41,6 @@ import android.widget.Toast;
 import com.webkey.Base64;
 import com.webkey.BinIO;
 import com.webkey.Ipc;
-import com.webkey.ManageUsers;
 import com.webkey.R;
 
 public class SettingsTab extends Activity implements OnClickListener{
@@ -70,7 +69,6 @@ public class SettingsTab extends Activity implements OnClickListener{
 		findViewById(R.id.servercheckbox).setOnClickListener(this);
 		findViewById(R.id.autostartcheckbox).setOnClickListener(this);
 		findViewById(R.id.notifisetting).setOnClickListener(this);
-		findViewById(R.id.usersettingsbtn).setOnClickListener(this);
 	}
 
 
@@ -151,11 +149,6 @@ public class SettingsTab extends Activity implements OnClickListener{
 		            ipc.notiyDestroy(mContext);
 		        }
         		break;
-
-        	case R.id.usersettingsbtn:
-        		Intent UsersActivity = new Intent(getBaseContext(), ManageUsers.class);
-                startActivity(UsersActivity);
-        		break;
         }
 
 	}
@@ -165,11 +158,9 @@ public class SettingsTab extends Activity implements OnClickListener{
 		prefsEditor = prefs.edit();
 		if (ipc.runTest() == false){
 			findViewById(R.id.edit_portbutton).setEnabled(true);
-			findViewById(R.id.usersettingsbtn).setEnabled(false);
 			ipc.notiyDestroy(mContext);
 		}else{
 			findViewById(R.id.edit_portbutton).setEnabled(false);
-			findViewById(R.id.usersettingsbtn).setEnabled(true);
 
 			//egyebkent meg kell ez eggyaltaln?
 			if(notifyBarPref){
