@@ -13,7 +13,7 @@
  <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
  
  <application android:icon="@drawable/icon" android:label="@string/app_name" android:allowBackup="true">
-     
+  <service android:name=".Service" android:label="@string/service_name"></service>
   <activity android:name=".Webkey" android:launchMode="singleInstance"
    android:label="@string/app_name">
    <intent-filter>
