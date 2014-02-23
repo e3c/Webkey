@@ -124,5 +124,6 @@
     <string name="remotescreen_exception_404">The phone is unreachable</string>
     <string name="remotescreen_exception_unknownhost">Network problem</string>
     <string name="remotescreen_exception_timedout">The phone is not responding</string>
+    <string name="service_name">Webkey Server</string>
 
 </resources>
