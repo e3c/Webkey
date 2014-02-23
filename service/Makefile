@@ -97,4 +97,4 @@ install:
 #	@echo The webkey binary was copied into to the assets folder.
 
 clean:
-	 rm -f webkey.o suinput.o base64.o mongoose.o sqlite/sqlite3.o libpng/libpng-1.2.42/*.o l libjpeg/jpeg-6b/*.o libjpeg.a libpng12.a sqlite3.a webkey
+	 rm -f webkey.o suinput.o base64.o mongoose.o libpng/libpng-1.2.42/*.o l libjpeg/jpeg-6b/*.o libjpeg.a libpng12.a webkey
