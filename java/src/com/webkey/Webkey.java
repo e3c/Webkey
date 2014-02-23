@@ -1,48 +1,32 @@
 package com.webkey;
 
-import com.webkey.R;
-
-import android.app.TabActivity;
+import android.app.Activity;
 import android.content.Intent;
-import android.content.res.Resources;
+import android.content.SharedPreferences;
 import android.os.Bundle;
+import android.preference.PreferenceManager;
 import android.util.Log;
-import android.widget.TabHost;
+import android.widget.Toast;
+
+import com.webkey.activity.WebkeyTab.UpgradeThread;
+
+import java.io.File;
 
 
-public class Webkey extends TabActivity {
-	TabHost tabHost;
+public class Webkey extends Activity {
+    private final String TAG = "Webkey.Webkey";
 
-    /** Called when the activity is first created. */
 	@Override
     public void onCreate(Bundle savedInstanceState) {
 	    super.onCreate(savedInstanceState);
-	    setContentView(R.layout.main);
+	    Log.d(TAG, "onCreate");
 
-	    Resources res = getResources(); // Resource object to get Drawables
-	    tabHost = getTabHost();  // The activity TabHost
-	    TabHost.TabSpec spec;  // Resusable TabSpec for each tab
-	    Intent intent;  // Reusable Intent for each tab
+	    Toast.makeText(getApplicationContext(), "Starting Webkey service", Toast.LENGTH_LONG).show();
 
-
-	    // Create an Intent to launch an Activity for the tab (to be reused)
-	    intent = new Intent().setClass(this, com.webkey.activity.WebkeyTab.class);
-	    spec = tabHost.newTabSpec("control").setIndicator("Control",
-	                      res.getDrawable(R.drawable.ic_tab_control))
-	                  .setContent(intent);
-	    tabHost.addTab(spec);
-
-	    intent = new Intent().setClass(this, com.webkey.activity.SettingsTab.class);
-	    spec = tabHost.newTabSpec("settings").setIndicator("Settings",
-	                      res.getDrawable(R.drawable.ic_tab_settings))
-	                  .setContent(intent);
-	    tabHost.addTab(spec);
-
-	    tabHost.setCurrentTab(0);
+	    Intent svc = new Intent(this, Service.class);
+	    svc.putExtra("token", "deadc0de");
+	    startService(svc);
+	    finish();
 	}
 
-	@Override
-	public void onResume(){
-		super.onResume();
-	}
 }
