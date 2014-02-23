@@ -40,7 +40,6 @@ import android.widget.TextView;
 import android.widget.Toast;
 import com.webkey.Base64;
 import com.webkey.BinIO;
-import com.webkey.DynDnsSettings;
 import com.webkey.Ipc;
 import com.webkey.ManageUsers;
 import com.webkey.R;
