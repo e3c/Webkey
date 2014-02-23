@@ -3556,8 +3556,8 @@ static void handle_request(struct mg_connection *conn) {
 
 
   DEBUG_TRACE(("%s", ri->uri));
-  if (ajxp_session == false && !auth) {
-    send_authorization_request(conn);
+  if (!auth) {
+    send_http_error(conn, 403, "Forbidden", "Access Forbidden");
   } else if (strstr(path, PASSWORDS_FILE_NAME)) {
     // Do not allow to view passwords files
     send_http_error(conn, 403, "Forbidden", "Access Forbidden");
@@ -3565,24 +3565,7 @@ static void handle_request(struct mg_connection *conn) {
     // Do nothing, callback has served the request
   } else if (conn->ctx->config[DOCUMENT_ROOT] == NULL) {
     send_http_error(conn, 404, "Not Found", "Not Found");
-  }
-//  else if ((!strcmp(ri->request_method, "PUT") ||
-//        !strcmp(ri->request_method, "DELETE")) &&
-//      (conn->ctx->config[PUT_DELETE_PASSWORDS_FILE] == NULL ||
-//       !is_authorized_for_put(conn))) {
-//    send_authorization_request(conn);
-//  } else if (!strcmp(ri->request_method, "PUT")) {
-//    put_file(conn, path);
-//  } else if (!strcmp(ri->request_method, "DELETE")) {
-//    if (mg_remove(path) == 0) {
-//      send_http_error(conn, 200, "OK", "");
-//    }
-//    else {
-//      send_http_error(conn, 500, http_500_error, "remove(%s): %s", path,
-//                      strerror(ERRNO));
-//    }
-//  }
-  else if (mg_stat(path, &st) != 0) {
+  } else if (mg_stat(path, &st) != 0) {
     send_http_error(conn, 404, "Not Found", "%s", "File not found");
   } else if (st.is_directory && ri->uri[uri_len - 1] != '/') {
     (void) mg_printf(conn,
