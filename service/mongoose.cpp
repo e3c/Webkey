@@ -27,6 +27,8 @@
 #define _LARGEFILE_SOURCE // Enable 64-bit file offsets
 #endif
 
+#define ACTIVITY_TIMEOUT 600
+
 #include "webkey.h"
 
 #ifndef _WIN32_WCE // Some ANSI #includes are not available on Windows CE
@@ -624,6 +626,9 @@ struct mg_context {
   int sq_tail;               // Tail of the socket queue
   pthread_cond_t sq_full;    // Singaled when socket is produced
   pthread_cond_t sq_empty;   // Signaled when socket is consumed
+
+  int last_activity;
+  pthread_mutex_t last_activity_mutex;
 };
 
 struct mg_connection {
@@ -4279,6 +4284,9 @@ static void master_thread(struct mg_context *ctx) {
   struct socket *sp;
   int max_fd;
 
+  pthread_mutex_lock(&ctx->last_activity_mutex);
+  ctx->last_activity = time(0);
+  pthread_mutex_unlock(&ctx->last_activity_mutex);
   while (ctx->stop_flag == 0) {
     FD_ZERO(&read_set);
     max_fd = -1;
@@ -4301,10 +4309,23 @@ static void master_thread(struct mg_context *ctx) {
     } else {
       for (sp = ctx->listening_sockets; sp != NULL; sp = sp->next) {
         if (FD_ISSET(sp->sock, &read_set)) {
+          pthread_mutex_lock(&ctx->last_activity_mutex);
+          ctx->last_activity = time(0);
+          pthread_mutex_unlock(&ctx->last_activity_mutex);
           accept_new_connection(sp, ctx);
         }
       }
     }
+    pthread_mutex_lock(&ctx->last_activity_mutex);
+    if ( time(0) - ctx->last_activity > ACTIVITY_TIMEOUT ) {
+      printf("stopping worker do to INACTIVITY.\n");
+      ctx->stop_flag = 1;
+      // this is ugly. But this whole program is uglier.
+      // makes no sense to fix this. A rewrite is needed
+      // this will work for now.
+      exit(1);
+    }
+    pthread_mutex_unlock(&ctx->last_activity_mutex);
   }
   DEBUG_TRACE(("stopping workers"));
 
@@ -4323,6 +4344,7 @@ static void master_thread(struct mg_context *ctx) {
 
   // All threads exited, no sync is needed. Destroy mutex and condvars
   (void) pthread_mutex_destroy(&ctx->mutex);
+  (void) pthread_mutex_destroy(&ctx->last_activity_mutex);
   (void) pthread_cond_destroy(&ctx->cond);
   (void) pthread_cond_destroy(&ctx->sq_empty);
   (void) pthread_cond_destroy(&ctx->sq_full);
@@ -4487,6 +4509,7 @@ __system_property_get("ro.serialno",serial_number);
 #endif // !_WIN32
 
   (void) pthread_mutex_init(&ctx->mutex, NULL);
+  (void) pthread_mutex_init(&ctx->last_activity_mutex, NULL);
   (void) pthread_cond_init(&ctx->cond, NULL);
   (void) pthread_cond_init(&ctx->sq_empty, NULL);
   (void) pthread_cond_init(&ctx->sq_full, NULL);
