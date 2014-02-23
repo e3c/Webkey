@@ -274,7 +274,6 @@ struct eqstr
 };
 
 static std::map<std::string, time_t> access_times;
-static std::string logfile;
 
 char modelname[PROP_VALUE_MAX];
 char manufacturer[PROP_VALUE_MAX];
@@ -284,39 +283,7 @@ static char deflanguage[PROP_VALUE_MAX];//PROP_VALUE_MAX == 92
 static bool has_ssl = false;
 
 char* humandate(char* buff, long int epoch, int dateformat, int datesep, int datein, int datetimezone);
-static pthread_mutex_t logmutex;
 static pthread_mutex_t initfbmutex;
-static void
-access_log(const struct mg_request_info *ri, const char* s)
-{
-	pthread_mutex_lock(&logmutex);
-	std::string log;
-	if (ri && ri->remote_user)
-	{
-		log = ri->remote_user;
-		log += ": ";
-	}
-	log += s;
-	time_t last = access_times[log];
-
-	struct timeval tv;
-	gettimeofday(&tv,0);
-	time_t now = tv.tv_sec;
-	if (last == 0 || now > last+1800)
-	{
-		FILE* f = fopen(logfile.c_str(),"a");
-		if (f)
-		{
-			char conv[LINESIZE];
-			fprintf(f,"[%s] %s\n",humandate(conv,now,0,0,0,0),log.c_str());
-			fclose(f);
-		}
-		access_times[log] = now;
-//		printf("%d\n",now);
-//		printf(" %s %d\n",log.c_str(),access_times[log.c_str()]);
-	}
-	pthread_mutex_unlock(&logmutex);
-}
 
 static void read_post_data(struct mg_connection *conn,
                 const struct mg_request_info *ri, char** post_data, int* post_data_len)
@@ -1016,7 +983,6 @@ void clear(bool exit = true)
 		sleep(1);
 		pthread_mutex_destroy(&diffmutex);
 		pthread_mutex_destroy(&popenmutex);
-		pthread_mutex_destroy(&logmutex);
 		pthread_mutex_destroy(&initfbmutex);
 		pthread_mutex_destroy(&uinputmutex);
 		pthread_mutex_destroy(&wakelockmutex);
@@ -1047,22 +1013,19 @@ void error(const char *msg,const char *msg2 = NULL, const char *msg3=NULL, const
 #ifdef ANDROID
     __android_log_print(ANDROID_LOG_INFO,"Webkey C++","service stoped");
 #endif
-    access_log(NULL,msg);
     if (msg2)
     {
 	    perror(msg2);
 #ifdef ANDROID
 	    __android_log_print(ANDROID_LOG_ERROR,"Webkey C++",msg2);
 #endif
-	    access_log(NULL,msg2);
-    }
+   }
     if (msg3)
     {
 	    perror(msg3);
 #ifdef ANDROID
 	    __android_log_print(ANDROID_LOG_ERROR,"Webkey C++",msg3);
 #endif
-	    access_log(NULL,msg3);
     }
     if (msg4)
     {
@@ -1070,7 +1033,6 @@ void error(const char *msg,const char *msg2 = NULL, const char *msg3=NULL, const
 #ifdef ANDROID
 	    __android_log_print(ANDROID_LOG_ERROR,"Webkey C++",msg4);
 #endif
-	    access_log(NULL,msg4);
     }
     clear();
     exit(1);
@@ -2663,7 +2625,6 @@ touch(struct mg_connection *conn,
 	if (ri->permissions != PERM_ROOT)
 		return;
 	lock_wakelock();
-	access_log(ri,"touch inject");
 	char* s = ri->uri;
 	int n = 0;
 	char* post_data;
@@ -3598,7 +3559,6 @@ key(struct mg_connection *conn,
 	if (ri->permissions != PERM_ROOT)
 		return;
 	lock_wakelock();
-	access_log(ri,"key inject");
 	send_ok(conn);
 	if (uinput_fd == -1 && geniatech == false)
 	{
@@ -3937,7 +3897,6 @@ savebuttons(struct mg_connection *conn,
 	if (ri->permissions != PERM_ROOT)
 		return;
 	lock_wakelock();
-	access_log(ri,"modify buttons");
 	char* post_data;
 	int post_data_len;
 	read_post_data(conn,ri,&post_data,&post_data_len);
@@ -3987,7 +3946,6 @@ savekeys(struct mg_connection *conn,
 	if (ri->permissions != PERM_ROOT)
 		return;
 	lock_wakelock();
-	access_log(ri,"modify keys");
 	char* post_data;
 	int post_data_len;
 	read_post_data(conn,ri,&post_data,&post_data_len);
@@ -4674,7 +4632,6 @@ button(struct mg_connection *conn,
 
 	send_ok(conn);
 	lock_wakelock();
-	access_log(ri,"button inject");
 	int key = getnum(ri->uri+8);
 	int i = 8;
 	while(ri->uri[i] && ri->uri[i] != '_') i++;
@@ -5176,7 +5133,6 @@ config(struct mg_connection *conn,
 			{
 				if (ri->permissions == PERM_ROOT || strcmp(ri->remote_user,name)==0)
 				{
-					access_log(ri,"modify users");
 					url_decode(name, strlen(name), name, FILENAME_MAX, true);
 					url_decode(pass, strlen(pass), pass, FILENAME_MAX, true);
 					for (int q = 0; q < strlen(name); q++)
@@ -5194,7 +5150,6 @@ config(struct mg_connection *conn,
 			{
 				if (ri->permissions == PERM_ROOT)
 				{
-					access_log(ri,"modify users");
 					url_decode(name, strlen(name), name, FILENAME_MAX, true);
 					for (int q = 0; q < strlen(name); q++)
 						if (name[q] == ':')
@@ -5203,26 +5158,6 @@ config(struct mg_connection *conn,
 				}
 				changed = true;
 			}
-		}
-		else if (!memcmp(post_data+i, "dellog",6))
-		{
-			if (ri->permissions == PERM_ROOT)
-			{
-
-				pthread_mutex_lock(&logmutex);
-				FILE* f = fopen(logfile.c_str(),"w");
-				if (f)
-				{
-					fclose(f);
-					access_times.clear();
-					pthread_mutex_unlock(&logmutex);
-					access_log(ri,"clear log");
-				}
-				else
-					pthread_mutex_unlock(&logmutex);
-			}
-			changed = true;
-			break;
 		}
 		else
 			i++;
@@ -5237,7 +5172,6 @@ config(struct mg_connection *conn,
 			if (name[q] == ':')
 				name[q] = ' ';
 		mg_modify_passwords_file(ctx, (dir+passfile).c_str(), name, pass,permissions);
-		access_log(ri,"modify permissions");
 	}
 	if (changed)
 	{
@@ -5317,21 +5251,6 @@ config(struct mg_connection *conn,
 	mg_printf(conn,"<h4 class=\"list\">%s</h4>",lang(ri,"Sdcard").c_str());
 	mg_printf(conn,"%s",lang(ri,"Read and modify the content of the sdcard.").c_str());
 
-	if (ri->permissions == PERM_ROOT)
-	{
-		mg_printf(conn,"<h3>%s</h3>",lang(ri,"Log (activities is logged once in every 30 minutes)").c_str());
-		FILE *f = fopen(logfile.c_str(),"r");
-		if(f)
-		{
-			char buff[256];
-			while (fgets(buff, sizeof(buff)-1, f) != NULL)
-			{
-				mg_printf(conn,"%s<br/>",buff);
-			}
-			fclose(f);
-		}
-		mg_printf(conn,"<form name=\"dellog_form\" method=\"post\"><input type=\"hidden\" name=\"dellog\" value=\"dellog\"><input type=\"submit\" value=\"%s\"></input></form>",lang(ri,"Clear log").c_str());
-	}
 	mg_printf(conn,"</body></html>");
 	if (post_data)
 		delete[] post_data;
@@ -5342,7 +5261,6 @@ screenshot(struct mg_connection *conn,
 {
 	printf("HERE %s\n", ri->uri);
 	lock_wakelock();
-	access_log(ri,"view screenshot");
 	int orient = 0;
 	bool png = false;
 	if (ri->uri[12] == 'p')
@@ -5457,7 +5375,6 @@ stop(struct mg_connection *conn,
 		mylog("stopping","%s");
 		exit_flag = 2;
 		mg_printf(conn,"Goodbye.");
-		access_log(ri,"stop service");
 	}
 }
 static void
@@ -5467,7 +5384,6 @@ run(struct mg_connection *conn,
 	if (ri->permissions != PERM_ROOT)
 		return;
 	lock_wakelock();
-	access_log(ri,"run command");
 	char* post_data;
 	int post_data_len;
 	read_post_data(conn,ri,&post_data,&post_data_len);
@@ -5600,7 +5516,6 @@ intent(struct mg_connection *conn,
 	if (ri->permissions != PERM_ROOT)
 		return;
 	lock_wakelock();
-	access_log(ri,"start intent");
 	send_ok(conn);
 	int n = 7;
 	std::string call = "/system/bin/am start ";
@@ -6097,7 +6012,6 @@ upload(struct mg_connection *conn,
 	if (ri->permissions != PERM_ROOT)
 		return;
 	lock_wakelock();
-	access_log(ri,"upload");
 	char* post_data;
 	int post_data_len = contentlen(conn);
 	int read = 0;
@@ -6158,7 +6072,6 @@ content(struct mg_connection *conn,
 	if (ri->permissions != PERM_ROOT && (ri->permissions&PERM_SDCARD)==0)
 		return;
 	lock_wakelock();
-	access_log(ri,"browse sdcard");
 	char* post_data;
 	int post_data_len;
 	read_post_data(conn,ri,&post_data,&post_data_len);
@@ -6888,7 +6801,6 @@ testfb(struct mg_connection *conn,
 	if (ri->permissions != PERM_ROOT)
 		return;
 	lock_wakelock();
-	access_log(ri,"run testfb");
 	send_ok(conn);
 
         size_t pixels;
@@ -6974,7 +6886,6 @@ testtouch(struct mg_connection *conn,
 	if (ri->permissions != PERM_ROOT)
 		return;
 	lock_wakelock();
-	access_log(ri,"run testtouch");
 	send_ok(conn);
 	if (is_icecreamsandwich)
 		mg_printf(conn,"this is icrecreamsandwich\n");
@@ -7415,7 +7326,6 @@ shellinabox(struct mg_connection *conn,
 {
 	if (ri->permissions != PERM_ROOT)
 		return;
-	access_log(ri,"run terminal");
 	char* post_data;
 	int post_data_len;
 	read_post_data(conn,ri,&post_data,&post_data_len);
@@ -7620,7 +7530,6 @@ static void *event_handler(enum mg_event event,
 	  return 0;
   printf("u: ~%s~\n",request_info->uri);
   fflush(NULL);
-  //access_log(request_info,"log in");
   void *processed = (void*)1;
   if (urlcompare(request_info->uri, "/screenshot.*"))
 	screenshot(conn, request_info, NULL);
@@ -7976,14 +7885,7 @@ int main(int argc, char **argv)
 		}
 	dir = argv[0];
 	stat(argv[0], &info);
-	chmod("/data/data/com.webkey/files/log.txt", S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP);
-	chown("/data/data/com.webkey/files/log.txt", info.st_uid, info.st_gid);
-	chmod("/data/data/com.webkey/files/log.txt", S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP);
-	printf("dir: %s\n",dir.c_str());
-	logfile = dir+"log.txt";
-	pthread_mutex_init(&logmutex, NULL);
 	pthread_mutex_init(&initfbmutex, NULL);
-	access_log(NULL,"service's started");
 	dirdepth = -1;
 	for (i = 0; i < strlen(argv[0]); i++)
 		if (argv[0][i] == '/')
