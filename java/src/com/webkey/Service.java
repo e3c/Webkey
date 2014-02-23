@@ -1,8 +1,10 @@
 package com.webkey;
 
 import android.app.IntentService;
+import android.content.ComponentName;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.PackageInfo;
 import android.preference.PreferenceManager;
 import android.util.Log;
 import android.widget.Toast;
@@ -35,11 +37,38 @@ public class Service extends IntentService {
     protected void onHandleIntent(Intent intent) {
         Log.d(TAG, "onHandleIntent");
 
+        String curVersion = "unknown";
+        try {
+            ComponentName comp = new ComponentName(getApplicationContext(), getApplicationContext().getClass());
+            PackageInfo pinfo = getApplicationContext().getPackageManager().getPackageInfo(comp.getPackageName(), 0);
+
+
+            curVersion = pinfo.versionName;
+
+        } catch (android.content.pm.PackageManager.NameNotFoundException e) {
+            //do nothing
+        }
         SharedPreferences wmbPreference = PreferenceManager.getDefaultSharedPreferences(this);
-        boolean isFirstRun = wmbPreference.getBoolean("freshinstall", true);
-        if (isFirstRun)
+        String installedVersion = wmbPreference.getString("installedVersion", "none");
+        if (!installedVersion.equals(curVersion))
         {
-            Log.w(TAG, "Fresh install or upgrade, unpacking binaries.");
+            Log.w(TAG, "Current version is " +  curVersion + " and last installedVersion was " + installedVersion);
+            String[] cmd = {
+                    "su -c killall webkey"
+                };
+            File file = new File("/");
+            if ( webkeyserver != null ) {
+                Log.d(TAG, "destroying existing server");
+                webkeyserver.destroy();
+                webkeyserver = null;
+            }
+            Log.d(TAG, "killing webkeyr");
+            try {
+                webkeyserver = Runtime.getRuntime().exec(cmd, null, file);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+
             BinIO binIO = new BinIO(getApplicationContext());
             Toast.makeText(getApplicationContext(), R.string.main_upgradingwait, Toast.LENGTH_LONG).show();
             String path = getFilesDir().getPath();
@@ -62,7 +91,7 @@ public class Service extends IntentService {
                 return;
             }
             SharedPreferences.Editor editor = wmbPreference.edit();
-            editor.putBoolean("freshinstall", false);
+            editor.putString("installedVersion", curVersion);
             editor.commit();
         }
 
