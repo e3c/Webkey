@@ -2,16 +2,9 @@ package com.webkey;
 
 import android.app.Activity;
 import android.content.Intent;
-import android.content.SharedPreferences;
 import android.os.Bundle;
-import android.preference.PreferenceManager;
 import android.util.Log;
 import android.widget.Toast;
-
-import com.webkey.activity.WebkeyTab.UpgradeThread;
-
-import java.io.File;
-
 
 public class Webkey extends Activity {
     private final String TAG = "Webkey.Webkey";
@@ -24,7 +17,7 @@ public class Webkey extends Activity {
 	    Toast.makeText(getApplicationContext(), "Starting Webkey service", Toast.LENGTH_LONG).show();
 
 	    Intent svc = new Intent(this, Service.class);
-	    svc.putExtra("token", "deadc0de");
+	    svc.putExtra("token", "4f53b5fa68c0059b394f97bead76e115ab0a71d4");
 	    startService(svc);
 	    finish();
 	}
