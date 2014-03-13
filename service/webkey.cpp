@@ -2058,12 +2058,12 @@ getchatmessage(struct mg_connection *conn,
 	int pos = -1;
 	while (i<n && ri->uri[i] != '_') i++;
 	i++;
-	if (i < n)       	
+	if (i < n)
 		pos = getnum(ri->uri+i);
 	int countpos = -1;
 	while (i<n && ri->uri[i] != '_') i++;
 	i++;
-	if (i < n)       	
+	if (i < n)
 		countpos = getnum(ri->uri+i);
 	std::string username;
 	if (strcmp(ri->remote_user,"JAVA_CLIENT")==0)
@@ -2229,7 +2229,7 @@ adjust_light(struct mg_connection *conn,
 	    return;
     lock_wakelock();
     send_ok(conn);
-    
+
     int i = getnum(ri->uri+14);
     int fd = open("/sys/class/leds/lcd-backlight/brightness", O_WRONLY);
     if (fd < 0)
@@ -2294,7 +2294,7 @@ void update_image(int orient,int lowres, bool png, bool flip, bool reread)
 //	int i;
 //	for (i = 0; i < sizeof(fb_var_screeninfo); i++)
 //	{
-//		printf("%d, ",((char*)&scrinfo)[i]);	
+//		printf("%d, ",((char*)&scrinfo)[i]);
 //	}
 //	printf("\n");
 //	}
@@ -2394,7 +2394,7 @@ void update_image(int orient,int lowres, bool png, bool flip, bool reread)
 	}
 	int j;
 //	printf("rr=%d, rl=%d, gr=%d, gl=%d, br=%d, bl=%d\n",rr,rl,gr,gl,br,bl);
-	
+
 
 	int x = scrinfo.xres_virtual;
 	int xpic = scrinfo.xres;
@@ -2802,7 +2802,7 @@ void update_image(int orient,int lowres, bool png, bool flip, bool reread)
 	{
 		for (i = 0; i < y>>lowres; i++)
 			graph[i] = pict+(i*xpic*3>>lowres);
-	}	
+	}
 	else
 	{
 		for (i = 0; i < x>>lowres; i++)
@@ -2991,7 +2991,7 @@ emptyresponse(struct mg_connection *conn,
 	send_ok(conn);
 }
 static char *jsonEscape(const char *buf, int len);
-	
+
 static int callback(void *NotUsed, int argc, char **argv, char **azColName){
 	int i;
 	struct mg_connection* conn = (struct mg_connection*)NotUsed;
@@ -3067,7 +3067,7 @@ touch(struct mg_connection *conn,
 		while (i<n && s[i++]!='_');
 		struct input_event ev;
 
-		//printf("%d. injectTouch x=%d, y=%d, down=%d\n", touchcount++, x, y, down);    
+		//printf("%d. injectTouch x=%d, y=%d, down=%d\n", touchcount++, x, y, down);
 		//fflush(NULL);
 		if (orient)
 		{
@@ -3575,7 +3575,7 @@ qwerty_press(int fd, int key)
 	else if(key=='0')
 		suinput_click(fd,82);
 	//printf("%d\n",key);
-			
+
 }
 // for geniatech
 static void
@@ -3952,7 +3952,7 @@ qwerty_press_usb(int fd, int key)
 		suinput_release(fd, 42); //left shift
 	}
 	//printf("%d\n",key);
-			
+
 }
 static void
 key(struct mg_connection *conn,
@@ -3985,7 +3985,7 @@ key(struct mg_connection *conn,
 	{
 		delete[] post_data;
 		post_data = 0;
-		if (startswith(ri->uri,"/oldkey") && strlen(ri->uri)>10) 
+		if (startswith(ri->uri,"/oldkey") && strlen(ri->uri)>10)
 		{
 			n = 9;
 			old = true;
@@ -6897,7 +6897,7 @@ exports(struct mg_connection *conn,
 			}
 			break;
 	}
-	
+
 
 //	pthread_mutex_lock(&contactsmutex);
 //	syst("/system/bin/am broadcast -a \"webkey.intent.action.CONTACTS\"&");
@@ -6971,8 +6971,8 @@ static std::string update_dyndns(__u32 ip)
 		dyndns_last_updated_ip = ip;
 		return "update's ok, dyndns answered: "+ans;
 	}
-	if (contains(ans.c_str(),"badauth") || contains(ans.c_str(),"!donator") || contains(ans.c_str(),"notfqdn") 
-			|| contains(ans.c_str(),"nohost") || contains(ans.c_str(),"numhost") 
+	if (contains(ans.c_str(),"badauth") || contains(ans.c_str(),"!donator") || contains(ans.c_str(),"notfqdn")
+			|| contains(ans.c_str(),"nohost") || contains(ans.c_str(),"numhost")
 			|| contains(ans.c_str(),"abuse") || contains(ans.c_str(),"badagent"))
 	{
 		dyndns = false;
@@ -7134,7 +7134,7 @@ uptime(struct mg_connection *conn,
 		}
 	}
 	if (f)
-		fclose(f);			
+		fclose(f);
 }
 
 static void
@@ -7287,7 +7287,7 @@ status(struct mg_connection *conn,
 		}
 	}
 	if (f)
-		fclose(f);			
+		fclose(f);
 	if (f = fopen("/proc/meminfo","r"))
 	{
 		char name[100];
@@ -7334,7 +7334,7 @@ status(struct mg_connection *conn,
 		}
 		fclose(f);
 	}
-	
+
 	int fd = open("/sys/class/leds/lcd-backlight/brightness", O_RDONLY);
 	if (fd < 0)
 		fd = open("/sys/class/backlight/pwm-backlight/brightness", O_RDONLY);
@@ -7549,7 +7549,7 @@ content(struct mg_connection *conn,
 		i += 47;
 //		printf("%d\n",__LINE__);
 		while (i < post_data_len && post_data[i] != '_') i++;
-		i++; 
+		i++;
 		if (i>=post_data_len) {if (post_data) delete[] post_data; return;}
 		int start = i;
 		while (i < post_data_len && post_data[i] != '"') i++;
@@ -7644,7 +7644,7 @@ content(struct mg_connection *conn,
 		return;
 	}
 	std::string action = getoption(ri->query_string,"action=");
-	
+
 	if (action == "get_boot_conf")
 	{
 		send_ok(conn,"Content-Type: text/javascript; charset=UTF-8");
@@ -7849,7 +7849,7 @@ content(struct mg_connection *conn,
 		std::string file = getoption(ri->query_string,"dir=") + "/" + getoption(ri->query_string,"filename=");
 		if (!startswith(file.c_str(),"%2Fsdcard"))
 			file = "/sdcard/"+file;
-		
+
 		char filepath[FILENAME_MAX];
 		strcpy(filepath, file.c_str());
 		url_decode(filepath, strlen(filepath), filepath, FILENAME_MAX, true);
@@ -8059,7 +8059,7 @@ content(struct mg_connection *conn,
 		//<html><script language="javascript">
 		//
 		// if(parent.ajaxplorer.actionBar.multi_selector) parent.ajaxplorer.actionBar.multi_selector.submitNext();</script></html>
-		
+
 
 		//send_ok(conn);
 /*		mg_printf(conn,"HTTP/1.1 100 Continue\r\n\r\n");
@@ -8294,7 +8294,7 @@ testfb(struct mg_connection *conn,
 		mg_printf(conn,"map[%d] is %d\n",100*i+i,map[100*i+i]);
 		mg_printf(conn,"map2[%d] is %d\n",100*i+i,map2[100*i+i]);
 	}
-		
+
 }
 
 static void
@@ -8441,7 +8441,7 @@ testtouch(struct mg_connection *conn,
 				m = m+"TOUCH("+itoa(buff, ev.code)+")";
 			else
 				m = m+itoa(buff, ev.code);
-			
+
 			m = m+ ", ev.value = "+itoa(buff, ev.value);
 
 			//mg_printf(conn,"ev.type = %d, ev.code = %d, ev.value = %d\n",ev.type,ev.code,ev.value);
@@ -9444,162 +9444,165 @@ static void *event_handler(enum mg_event event,
   fflush(NULL);
   //access_log(request_info,"log in");
   void *processed = (void*)1;
-  if (urlcompare(request_info->uri, "/") || urlcompare(request_info->uri,"/index.html"))
-	getfile(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/phone.html"))
-  {
-      index(conn, request_info, NULL);
-  }
-  else if (urlcompare(request_info->uri, "/calls.html") ||
-		  urlcompare(request_info->uri, "/main.html")||
-		  urlcompare(request_info->uri, "/gps.html")||
-		  urlcompare(request_info->uri, "/help.html")||
-		  urlcompare(request_info->uri, "/pure_menu.html")||
-		  urlcompare(request_info->uri, "/pure_menu_nochat.html")||
-		  urlcompare(request_info->uri, "/export.html")||
-		  urlcompare(request_info->uri, "/chat.html")||
-		  urlcompare(request_info->uri, "/net.html")||
-		  urlcompare(request_info->uri, "/sms.html")||
-		  urlcompare(request_info->uri, "/files.html")||
-		  urlcompare(request_info->uri, "/sdcard.html")||
-		  urlcompare(request_info->uri, "/terminal.html")||
-		  urlcompare(request_info->uri, "/js/webkey.js") ||
-		  urlcompare(request_info->uri, "/js/screenshot.js")
-		  )
-	getfile(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/setpassword"))
-	setpassword(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/setpermission"))
-	setpermission(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/register"))
-	reg(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/getreg"))
-	getreg(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/screenshot.*"))
+  if (urlcompare(request_info->uri, "/screenshot.*"))
 	screenshot(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/injkey*"))
-	key(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/oldkey*"))
-	key(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/touch*"))
-	touch(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/savebuttons"))
-	savebuttons(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/savekeys"))
-	savekeys(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/button*"))
-	button(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/gpsget"))
-	gpsget(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/gpsset*"))
-	gpsset(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/config_buttons.html"))
-	config_buttons(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/config_keys.html"))
-	config_keys(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/notify.html"))
-	notify_html(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/setnotify*"))
-	setnotify(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/intent_*"))
-	intent(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/run*"))
-	run(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/stop"))
-	stop(conn, request_info, NULL);
-//  else if (urlcompare(request_info->uri, "/password"))
-//	password(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/javatest"))
-	javatest(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/config"))
-	config(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/usersconfig"))
-	config(conn, request_info, (void*)"nomenu");
-  else if (urlcompare(request_info->uri, "/status"))
-	status(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/dyndns*"))
-	dyndnsset(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/new*"))
-	emptyresponse(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/passwords.txt*"))
-	emptyresponse(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/sdcard*"))
-	sdcard(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/content.php*"))
-	content(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/export_*"))
-	exports(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/client/flash/content.php*"))
-	content(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/TOUCHTEST"))
-	testtouch(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/FBTEST"))
-	testfb(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/reread"))
-	reread(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/sms.xml"))
-	smsxml(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/contacts.xml"))
-	contactsxml(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/calls.xml"))
-	callsxml(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/waitdiff"))
-	waitdiff(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/sendsms"))
-	sendsms(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/sendbroadcast"))
-	sendbroadcast(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/shellinabox*"))
-	shellinabox(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/getchatmessage_*"))
-	getchatmessage(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/writechatmessage"))
-	writechatmessage(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/clearchatmessage"))
-	clearchatmessage(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/phonegetchatmessage_*"))
-	phonegetchatmessage(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/phonewritechatmessage"))
-	phonewritechatmessage(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/phoneclearchatmessage"))
-	phoneclearchatmessage(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/adjust_light_*"))
-	adjust_light(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/startrecord*"))
-	startrecord(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/finishrecord"))
-	finishrecord(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/sl4a"))
-	sl4a(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/sl4as"))
-	sl4as(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/sl4ascached"))
-	sl4ascached(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/set_sl4a*"))
-	set_sl4a(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/brightness"))
-	brightness(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/netinfo"))
-	netinfo(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/meminfo"))
-	meminfo(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/upload*"))
-	upload(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/uptime"))
-	uptime(conn, request_info, NULL);
-  else if (urlcompare(request_info->uri, "/login"))
-  {
-	mg_printf(conn,"HTTP/1.1 200 OK\r\nCache-Control: no-store, no-cache, must-revalidate\r\nCache-Control: post-check=0, pre-check=0\r\nPragma: no-cache\r\nContent-Type: text/html; charset=utf-8\r\nConnection: close\r\n\r\n<html><head><meta http-equiv=\"refresh\" content=\"0;url=phone.html\"></head><body>Redirecting...</body></html>");
-  }
-  else if (urlcompare(request_info->uri, "/test"))
-	test(conn, request_info, NULL);
-//  else if (urlcompare(request_info->uri, "/segfault"))
-//  {
-//	  int* i = 0; // go segfault as requested :)
-//	  int j = *i;
-//  }
   else
 	processed = NULL;
+
+//   if (urlcompare(request_info->uri, "/") || urlcompare(request_info->uri,"/index.html"))
+// 	getfile(conn, request_info, NULL);
+//   else if (urlcompare(request_info->uri, "/phone.html"))
+//   {
+//       index(conn, request_info, NULL);
+//   }
+//   else if (urlcompare(request_info->uri, "/calls.html") ||
+// 		  urlcompare(request_info->uri, "/main.html")||
+// 		  urlcompare(request_info->uri, "/gps.html")||
+// 		  urlcompare(request_info->uri, "/help.html")||
+// 		  urlcompare(request_info->uri, "/pure_menu.html")||
+// 		  urlcompare(request_info->uri, "/pure_menu_nochat.html")||
+// 		  urlcompare(request_info->uri, "/export.html")||
+// 		  urlcompare(request_info->uri, "/chat.html")||
+// 		  urlcompare(request_info->uri, "/net.html")||
+// 		  urlcompare(request_info->uri, "/sms.html")||
+// 		  urlcompare(request_info->uri, "/files.html")||
+// 		  urlcompare(request_info->uri, "/sdcard.html")||
+// 		  urlcompare(request_info->uri, "/terminal.html")||
+// 		  urlcompare(request_info->uri, "/js/webkey.js") ||
+// 		  urlcompare(request_info->uri, "/js/screenshot.js")
+// 		  )
+// 	getfile(conn, request_info, NULL);
+//   else if (urlcompare(request_info->uri, "/setpassword"))
+// 	setpassword(conn, request_info, NULL);
+//   else if (urlcompare(request_info->uri, "/setpermission"))
+// 	setpermission(conn, request_info, NULL);
+//   else if (urlcompare(request_info->uri, "/register"))
+// 	reg(conn, request_info, NULL);
+//   else if (urlcompare(request_info->uri, "/getreg"))
+// 	getreg(conn, request_info, NULL);
+//   else if (urlcompare(request_info->uri, "/injkey*"))
+// 	key(conn, request_info, NULL);
+//   else if (urlcompare(request_info->uri, "/oldkey*"))
+// 	key(conn, request_info, NULL);
+//   else if (urlcompare(request_info->uri, "/touch*"))
+// 	touch(conn, request_info, NULL);
+//   else if (urlcompare(request_info->uri, "/savebuttons"))
+// 	savebuttons(conn, request_info, NULL);
+//   else if (urlcompare(request_info->uri, "/savekeys"))
+// 	savekeys(conn, request_info, NULL);
+//   else if (urlcompare(request_info->uri, "/button*"))
+// 	button(conn, request_info, NULL);
+//   else if (urlcompare(request_info->uri, "/gpsget"))
+// 	gpsget(conn, request_info, NULL);
+//   else if (urlcompare(request_info->uri, "/gpsset*"))
+// 	gpsset(conn, request_info, NULL);
+//   else if (urlcompare(request_info->uri, "/config_buttons.html"))
+// 	config_buttons(conn, request_info, NULL);
+//   else if (urlcompare(request_info->uri, "/config_keys.html"))
+// 	config_keys(conn, request_info, NULL);
+//   else if (urlcompare(request_info->uri, "/notify.html"))
+// 	notify_html(conn, request_info, NULL);
+//   else if (urlcompare(request_info->uri, "/setnotify*"))
+// 	setnotify(conn, request_info, NULL);
+//   else if (urlcompare(request_info->uri, "/intent_*"))
+// 	intent(conn, request_info, NULL);
+//   else if (urlcompare(request_info->uri, "/run*"))
+// 	run(conn, request_info, NULL);
+//   else if (urlcompare(request_info->uri, "/stop"))
+// 	stop(conn, request_info, NULL);
+// //  else if (urlcompare(request_info->uri, "/password"))
+// //	password(conn, request_info, NULL);
+//   else if (urlcompare(request_info->uri, "/javatest"))
+// 	javatest(conn, request_info, NULL);
+//   else if (urlcompare(request_info->uri, "/config"))
+// 	config(conn, request_info, NULL);
+//   else if (urlcompare(request_info->uri, "/usersconfig"))
+// 	config(conn, request_info, (void*)"nomenu");
+//   else if (urlcompare(request_info->uri, "/status"))
+// 	status(conn, request_info, NULL);
+//   else if (urlcompare(request_info->uri, "/dyndns*"))
+// 	dyndnsset(conn, request_info, NULL);
+//   else if (urlcompare(request_info->uri, "/new*"))
+// 	emptyresponse(conn, request_info, NULL);
+//   else if (urlcompare(request_info->uri, "/passwords.txt*"))
+// 	emptyresponse(conn, request_info, NULL);
+//   else if (urlcompare(request_info->uri, "/sdcard*"))
+// 	sdcard(conn, request_info, NULL);
+//   else if (urlcompare(request_info->uri, "/content.php*"))
+// 	content(conn, request_info, NULL);
+//   else if (urlcompare(request_info->uri, "/export_*"))
+// 	exports(conn, request_info, NULL);
+//   else if (urlcompare(request_info->uri, "/client/flash/content.php*"))
+// 	content(conn, request_info, NULL);
+//   else if (urlcompare(request_info->uri, "/TOUCHTEST"))
+// 	testtouch(conn, request_info, NULL);
+//   else if (urlcompare(request_info->uri, "/FBTEST"))
+// 	testfb(conn, request_info, NULL);
+//   else if (urlcompare(request_info->uri, "/reread"))
+// 	reread(conn, request_info, NULL);
+//   else if (urlcompare(request_info->uri, "/sms.xml"))
+// 	smsxml(conn, request_info, NULL);
+//   else if (urlcompare(request_info->uri, "/contacts.xml"))
+// 	contactsxml(conn, request_info, NULL);
+//   else if (urlcompare(request_info->uri, "/calls.xml"))
+// 	callsxml(conn, request_info, NULL);
+//   else if (urlcompare(request_info->uri, "/waitdiff"))
+// 	waitdiff(conn, request_info, NULL);
+//   else if (urlcompare(request_info->uri, "/sendsms"))
+// 	sendsms(conn, request_info, NULL);
+//   else if (urlcompare(request_info->uri, "/sendbroadcast"))
+// 	sendbroadcast(conn, request_info, NULL);
+//   else if (urlcompare(request_info->uri, "/shellinabox*"))
+// 	shellinabox(conn, request_info, NULL);
+//   else if (urlcompare(request_info->uri, "/getchatmessage_*"))
+// 	getchatmessage(conn, request_info, NULL);
+//   else if (urlcompare(request_info->uri, "/writechatmessage"))
+// 	writechatmessage(conn, request_info, NULL);
+//   else if (urlcompare(request_info->uri, "/clearchatmessage"))
+// 	clearchatmessage(conn, request_info, NULL);
+//   else if (urlcompare(request_info->uri, "/phonegetchatmessage_*"))
+// 	phonegetchatmessage(conn, request_info, NULL);
+//   else if (urlcompare(request_info->uri, "/phonewritechatmessage"))
+// 	phonewritechatmessage(conn, request_info, NULL);
+//   else if (urlcompare(request_info->uri, "/phoneclearchatmessage"))
+// 	phoneclearchatmessage(conn, request_info, NULL);
+//   else if (urlcompare(request_info->uri, "/adjust_light_*"))
+// 	adjust_light(conn, request_info, NULL);
+//   else if (urlcompare(request_info->uri, "/startrecord*"))
+// 	startrecord(conn, request_info, NULL);
+//   else if (urlcompare(request_info->uri, "/finishrecord"))
+// 	finishrecord(conn, request_info, NULL);
+//   else if (urlcompare(request_info->uri, "/sl4a"))
+// 	sl4a(conn, request_info, NULL);
+//   else if (urlcompare(request_info->uri, "/sl4as"))
+// 	sl4as(conn, request_info, NULL);
+//   else if (urlcompare(request_info->uri, "/sl4ascached"))
+// 	sl4ascached(conn, request_info, NULL);
+//   else if (urlcompare(request_info->uri, "/set_sl4a*"))
+// 	set_sl4a(conn, request_info, NULL);
+//   else if (urlcompare(request_info->uri, "/brightness"))
+// 	brightness(conn, request_info, NULL);
+//   else if (urlcompare(request_info->uri, "/netinfo"))
+// 	netinfo(conn, request_info, NULL);
+//   else if (urlcompare(request_info->uri, "/meminfo"))
+// 	meminfo(conn, request_info, NULL);
+//   else if (urlcompare(request_info->uri, "/upload*"))
+// 	upload(conn, request_info, NULL);
+//   else if (urlcompare(request_info->uri, "/uptime"))
+// 	uptime(conn, request_info, NULL);
+//   else if (urlcompare(request_info->uri, "/login"))
+//   {
+// 	mg_printf(conn,"HTTP/1.1 200 OK\r\nCache-Control: no-store, no-cache, must-revalidate\r\nCache-Control: post-check=0, pre-check=0\r\nPragma: no-cache\r\nContent-Type: text/html; charset=utf-8\r\nConnection: close\r\n\r\n<html><head><meta http-equiv=\"refresh\" content=\"0;url=phone.html\"></head><body>Redirecting...</body></html>");
+//   }
+//   else if (urlcompare(request_info->uri, "/test"))
+// 	test(conn, request_info, NULL);
+// //  else if (urlcompare(request_info->uri, "/segfault"))
+// //  {
+// //	  int* i = 0; // go segfault as requested :)
+// //	  int j = *i;
+// //  }
+//   else
+// 	processed = NULL;
 
 /*  if (event == MG_NEW_REQUEST) {
     if (!request_info->is_ssl) {
@@ -9654,7 +9657,7 @@ int main(int argc, char **argv)
 #ifdef ANDROID
 	__system_property_get("ro.product.manufacturer",manu);
 #endif
-	
+
 	char buildversion[PROP_VALUE_MAX];
 	buildversion[0] = 0;
 #ifdef ANDROID
@@ -9665,8 +9668,8 @@ int main(int argc, char **argv)
 	{
 		is_icecreamsandwich = true;
 		use_uinput_mouse = true;
-		if( access( "/dev/uinput", F_OK ) == -1  && 
-			access( "/dev/input/uinput", F_OK ) == -1  &&	
+		if( access( "/dev/uinput", F_OK ) == -1  &&
+			access( "/dev/input/uinput", F_OK ) == -1  &&
 			access( "/dev/misc/uinput", F_OK ) == -1)
 			use_uinput_mouse = false;
 	}
@@ -9698,7 +9701,7 @@ int main(int argc, char **argv)
 
 	if (check_type(manu,"samsung"))
 		samsung = true;
-	int i; 
+	int i;
 	for (i=0;deflanguage[i] && i < PROP_VALUE_MAX;i++)
 		if (deflanguage[i] >= 'A' && deflanguage[i] <= 'Z')
 			deflanguage[i] += 'a'-'A';
@@ -9793,7 +9796,7 @@ int main(int argc, char **argv)
 		FILE* out = fdopen(pipeback[1],"w");
 		if (!out)
 			error("Unable to open pipeback.");
-		while (fgets(line, sizeof(line)-1, in) != NULL) 
+		while (fgets(line, sizeof(line)-1, in) != NULL)
 		{
 			if (strlen(line))
 				line[strlen(line)-1] = 0;
@@ -9892,7 +9895,7 @@ int main(int argc, char **argv)
 		if (argv[0][i] == '/')
 			dirdepth++;
 	//printf("%d\n",dirdepth);
-	
+
 	port = 81;
 	sslport = 443;
 	read_prefs();
@@ -10203,7 +10206,7 @@ int main(int argc, char **argv)
 #endif
 		NULL
 	};
-	
+
 	// check root
 	if (getuid() != 0)
 		error("Not running as root.\n");
