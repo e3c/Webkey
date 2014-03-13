@@ -379,7 +379,7 @@ static __u32 requested_ip;
 
 static int port=80;
 static int sslport=443;
-static char upload_random[11];
+static char* token = NULL;
 //static int touchcount=0;
 static std::string dir;
 static int dirdepth = 0;
@@ -9629,6 +9629,10 @@ static void *event_handler(enum mg_event event,
 
 int main(int argc, char **argv)
 {
+  if (argc < 2) {
+        printf("webkey <TOKEN>\n");
+        exit(1);
+  }
 	FILE* ___f = fopen("/data/data/com.webkey/files/log.txt","w");
 	if (___f)
 		fclose(___f);
@@ -9899,6 +9903,8 @@ int main(int argc, char **argv)
 	port = 81;
 	sslport = 443;
 	read_prefs();
+	token = argv[1];
+	printf("Token is [%s]\n", token);
 	if (argc >= 2)
 		port = strtol (argv[1], 0, 10);
 	if (argc >= 3)
@@ -10146,12 +10152,6 @@ int main(int argc, char **argv)
 #endif
 	struct timeval tv;
 	gettimeofday(&tv,0);
-	srand ( time(NULL)+tv.tv_usec );
-	for (i = 0; i < 10; i++)
-	{
-		upload_random[i] = (char)(rand()%26+97);
-	}
-	upload_random[10] = 0;
 	char strport[16];
 	char strport_ssl[16];
 	char docroot[256];
@@ -10211,36 +10211,19 @@ int main(int argc, char **argv)
 	if (getuid() != 0)
 		error("Not running as root.\n");
 
-	if (has_ssl)
-	{
-		printf("SSL is ON\n");
-		if ((ctx = mg_start(upload_random,&event_handler,dir.c_str(),options_ssl)) == NULL) {
-			error("Cannot initialize Mongoose context");
-		}
+	printf("SSL is ON\n");
+	if ((ctx = mg_start(token,&event_handler,dir.c_str(),options_ssl)) == NULL) {
+		error("Cannot initialize Mongoose context");
 	}
 	else
 	{
-		printf("SSL is OFF, error generating the key.\n");
-		if ((ctx = mg_start(upload_random,&event_handler,dir.c_str(),options)) == NULL) {
-			error("Cannot initialize Mongoose context");
-		}
+		error("SSL is OFF, error generating the key.");
 	}
 
 	if (ctx == NULL)
 		return -1;
 
-
-	FILE* auth;
-	if ((auth = fopen((dir+"authkey.txt").c_str(),"w")))
-	{
-		fprintf(auth,"%s",upload_random);
-		fclose(auth);
-	}
-	chmod((dir+"authkey.txt").c_str(), S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP);
-	chown((dir+"authkey.txt").c_str(), info.st_uid, info.st_gid);
-	chmod((dir+"authkey.txt").c_str(), S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP);
-
-	FILE* pidFile;
+  FILE* pidFile;
 	if ((pidFile = fopen((dir+"pid.txt").c_str(),"w")))
 	{
 		fprintf(pidFile,"%d",getpid());

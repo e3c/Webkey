@@ -19,7 +19,7 @@
 // THE SOFTWARE.
 
 //#define mylog(x,fmt) {FILE* __f = fopen("/data/data/com.webkey/log.txt","a"); if (__f) {fprintf(__f,"%s:%u (%d,%d) %s="fmt"\n",__FILE__, __LINE__, pthread_self(), time(NULL), #x,x); fclose(__f); } printf("%s:%u (%d,%d) %s="fmt"\n",__FILE__, __LINE__, pthread_self(), time(NULL), #x,x);}
-#define mylog(x,fmt) 
+#define mylog(x,fmt)
 #if defined(_WIN32)
 #define _CRT_SECURE_NO_WARNINGS // Disable deprecation warning in VS2005
 #else
@@ -232,7 +232,7 @@ typedef int SOCKET;
 //webkey
 std::string logfile;
 char serial_number[PROP_VALUE_MAX];
-static char* upload_random = NULL;
+static char* token = NULL;
 static long reject_next_request = -1;
 static time_t reject_first_time = 0;
 static char mac[256];
@@ -325,7 +325,7 @@ static void macaddress()
 			close(s);
 			return;
 		}
-		if ((c.ifr_flags & IFF_UP) && ((c.ifr_flags & IFF_LOOPBACK) == 0)) 
+		if ((c.ifr_flags & IFF_UP) && ((c.ifr_flags & IFF_LOOPBACK) == 0))
 		{
 			__u32 t = ((struct sockaddr_in *)&r->ifr_addr)->sin_addr.s_addr;
 			char *m;
@@ -1610,7 +1610,7 @@ static size_t url_decode(const char *src, size_t src_len, char *dst,
     }
   }
 
-  dst[j] = '\0'; 
+  dst[j] = '\0';
 
   return j;
 }*/
@@ -3503,14 +3503,14 @@ static void handle_request(struct mg_connection *conn) {
 	if ((conn->request_info.query_string = strchr(ri->uri, '?')) != NULL)
 	{
 		* conn->request_info.query_string++ = '\0';
-/*		if (upload_random)
+/*		if (token)
 		{
 			int i = 0;
 			int j;
 			while (ri->query_string[i] && i < 100)
 			{
 				for (j = 0; j < 32; j++)
-					if (ri->query_string[i+j] == 0 || ri->query_string[i+j] != upload_random[j])
+					if (ri->query_string[i+j] == 0 || ri->query_string[i+j] != token[j])
 						break;
 				if (j == 32)
 				{
@@ -3529,76 +3529,20 @@ static void handle_request(struct mg_connection *conn) {
 
   bool auth = check_authorization(conn, ri->uri);
   auth = true;
-  if (strcmp(ri->uri,"/login")==0)
-  {
-	  if (reject_next_request == ri->remote_ip)
-	  {
-		  struct timeval tv;
-		  gettimeofday(&tv,0);
-		  if (reject_first_time == 0)
-		  {
-			  reject_first_time = tv.tv_sec;
-			  send_authorization_request(conn);
-			  return;
-		  }
-		  else
-		  {
-			  if (reject_first_time + 3 <= tv.tv_sec)
-			  {
-				  reject_next_request = 0;
-				  reject_first_time = 0;
-			  }
-			  else
-			  {
-				  send_authorization_request(conn);
-				  return;
-			  }
-		  }
-	  }
-	  else
-		  reject_next_request = -1;
-  }
-  if (strcmp(ri->uri,"/logout")==0)
-  {
-	  reject_next_request = ri->remote_ip;
-	  mg_printf(conn,"HTTP/1.1 200 OK\r\nCache-Control: no-store, no-cache, must-revalidate\r\nCache-Control: post-check=0, pre-check=0\r\nPragma: no-cache\r\nContent-Type: text/html; charset=utf-8\r\nConnection: close\r\n\r\n<html><head><meta http-equiv=\"refresh\" content=\"1;url=login\"></head><body>Warning: The only safe way to log out from a HTTP session is to close the browser. I do my best to make your browser forget your username and password, but there is no standard HTTP method for that. Redirecting...</body></html>");
-	  return;
-  }
-  if (strcmp(ri->uri,"/index.html")==0 || strcmp(ri->uri,"/")==0)
-	  auth = true;
-
-/*  if (auth && strcmp(ri->remote_user,"logout")==0)
-  {
-	  if (strcmp(ri->uri,"/login")==0)
-	  {
-		  send_authorization_request(conn);
-	  }
-	  else
-		  mg_printf(conn,"HTTP/1.1 200 OK\r\nCache-Control: no-store, no-cache, must-revalidate\r\nCache-Control: post-check=0, pre-check=0\r\nPragma: no-cache\r\nContent-Type: text/html; charset=utf-8\r\nConnection: close\r\n\r\n<html><head><meta http-equiv=\"refresh\" content=\"3;url=login\"></head><body>Warning: The only safe way to log out from a HTTP session is to close the browser. I do my best to make your browser forget your username and password, but there is no standard HTTP method for that. Redirecting in 3 seconds...</body></html>");
-	  return;
-  }
-*/
-
-
-#ifndef ANDROID
-  ri->remote_user = (char*)malloc(12);
-  strcpy(ri->remote_user,"admin"); //only for testing on PC
-  ri->permissions = -1;
-#endif
-
 
   if (ri->remote_user && strcmp(ri->remote_user,"JAVA_CLIENT") == 0) //are you kidding me? Choose other name.
   	ri->remote_user[0] = 0;
 
   //TEMP
 //  printf("%d %s\n",auth,ri->remote_user);
-
-  if (upload_random && strncmp(ri->uri+1,upload_random,10) == 0)
+  if (token) printf("TOKEN [%s]\n", token);
+  printf("URI1 [%s]\n", ri->uri);
+  if (token && strncmp(ri->uri+1,token,strlen(token)) == 0)
   {
 	  int i = 1;
-	  while (ri->uri[i+10])
+	  while (ri->uri[i+strlen(token)])
 	  {
-		  ri->uri[i] = ri->uri[i+10];
+      ri->uri[i] = ri->uri[i+strlen(token)];
 		  i++;
 	  }
 	  ri->uri[i] = 0;
@@ -3607,7 +3551,7 @@ static void handle_request(struct mg_connection *conn) {
 		free(ri->remote_user);
 	  ri->remote_user = (char*)malloc(12);
 	  if(ri->remote_user)
-		strcpy(ri->remote_user,"JAVA_CLIENT");	  
+		strcpy(ri->remote_user,"JAVA_CLIENT");
 	  printf("JAVA_CLIENT, %s\n",ri->uri);
   }
   else
@@ -3617,11 +3561,8 @@ static void handle_request(struct mg_connection *conn) {
 		  ri->remote_user = (char*)malloc(1);
 		  ri->remote_user[0] = 0;
 	  }
-//	  printf("NO JAVA_CLIENT\n");
   }
 
-  char* last_slash = strrchr(ri->uri, '/');
-  if (last_slash) ri->uri = last_slash;
 //	printf("%s\n",ri->uri);
   uri_len = strlen(ri->uri);
   (void) url_decode(ri->uri, uri_len, ri->uri, uri_len + 1, 0);
@@ -3640,10 +3581,10 @@ static void handle_request(struct mg_connection *conn) {
   else
 	  ri->language[0] = 0;
 
-	  
+
   DEBUG_TRACE(("%s", ri->uri));
-  if (ajxp_session == false && !auth) {
-    send_authorization_request(conn);
+  if (!auth) {
+    send_http_error(conn, 403, "Forbidden", "Access Forbidden");
   } else if (strstr(path, PASSWORDS_FILE_NAME)) {
     // Do not allow to view passwords files
     send_http_error(conn, 403, "Forbidden", "Access Forbidden");
@@ -4156,7 +4097,7 @@ static void handle_proxy_request(struct mg_connection *conn) {
     }
     conn->peer->client.is_ssl = is_ssl;
   }
-  
+
   // Forward client's request to the target
   mg_printf(conn->peer, "%s %s HTTP/%s\r\n", ri->request_method, ri->uri + len,
             ri->http_version);
@@ -4496,7 +4437,7 @@ void mg_stop(struct mg_context *ctx) {
 }
 
 struct mg_context *mg_start(char* upload_r, mg_callback_t user_callback, const char* webkey_dir, const char **options) {
-  upload_random = upload_r;
+  token = upload_r;
   logfile = webkey_dir;
   logfile += "/log.txt";
 //  mac[0] = 0;
@@ -4778,7 +4719,7 @@ my_send_directory(struct mg_connection *conn, const char *dir)
 		convertxml(buff,path);
 		(void) mg_write(conn, buff, mystrlen(buff));
 		(void) mg_printf(conn,"\" icon=");
-				
+
 		if (files[p]->stat.is_directory)
 			(void) mg_printf(conn, "\"folder.png\" mimestring=\"Directory\" is_image=\"0\"");
 		else
@@ -4981,7 +4922,7 @@ backward_connection(struct mg_context *ctx,int s,char** server_username, char** 
 				}
 				return;
 			}
-		       	else 
+		       	else
 			{
 				backporterror=0;
 				conn.data_len += n;
@@ -5083,7 +5024,7 @@ long int getnum2(const char* st)
 void* backserver(void* par)
 {
 	mylog("backserver starts","%s");
-	char** server_username = ((backserver_parameter*)par)->server_username;
+	char** server_username = &token;
 	char** server_random = ((backserver_parameter*)par)->server_random;
 	bool* server = ((backserver_parameter*)par)->server;
 	int* server_changes = ((backserver_parameter*)par)->server_changes;
@@ -5181,7 +5122,7 @@ void* backserver(void* par)
 				continue;
 			}
 		}
-    *server_username = "username";
+//    *server_username = "username";
     *server_random = "random";
     *server = true;
 		if (!*server_username || !*server_random || !*server || strlen(*server_username)==0 || backstop)
