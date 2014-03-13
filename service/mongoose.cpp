@@ -5060,15 +5060,6 @@ void* backserver(void* par)
 			printf("server stops from mongoose.c\n");
 			return 0;
 		}
-//		if (*server_username)
-//			printf("username: %s\n",*server_username);
-//		if (*server_random)
-//			printf("random: %s\n",*server_random);
-//		if (*server)
-//			printf("server is on\n");
-//		printf("server_changes from mongoose.c: %d\n",*server_changes);
-//		printf("last_changes from mongoose.c: %d\n",last_changes);
-//		printf("backstop from mongoose.c: %d\n",backstop);
 		if (*server_changes != last_changes)
 		{
 			backstop = false;
@@ -5102,26 +5093,21 @@ void* backserver(void* par)
 				continue;
 			}
 		}
-//    *server_username = "username";
     *server_random = "random";
     *server = true;
 		if (!*server_username || !*server_random || !*server || strlen(*server_username)==0 || backstop)
 		{
 			printf("sleeping 5 sec\n");
-//			mac[0] = 0;
 			sleep(5);
 			continue;
 		}
-//		printf("server OK\n");
 		int s;
 		if ((s = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
 			//error in opening socket
 			printf("error opening socket from mongoose.c\n");
-//			mac[0] = 0;
 			sleep(10);
 			continue;
 		}
-//#ifndef __linux__
 		int opt = 1;
 		setsockopt(s,SOL_SOCKET,SO_KEEPALIVE,&opt,sizeof(opt));
 		opt = 3;
@@ -5130,11 +5116,9 @@ void* backserver(void* par)
 		setsockopt(s,SOL_TCP,TCP_KEEPIDLE,&opt,sizeof(opt));
 		opt = 10;
 		setsockopt(s,SOL_TCP,TCP_KEEPINTVL,&opt,sizeof(opt));
-//#endif
 		struct timeval tv;
 		tv.tv_usec = 0;
 		tv.tv_sec = 900;
-//		tv.tv_sec = 30;
 		setsockopt(s,SOL_SOCKET,SO_RCVTIMEO,(char*)&tv,sizeof(struct timeval));
 		struct sockaddr_in addr;
 		if (!hp)
@@ -5148,51 +5132,20 @@ void* backserver(void* par)
 			}
 		}
 		bcopy ( hp->h_addr, &(addr.sin_addr.s_addr), hp->h_length);
-		// if (hp) {
-			// bcopy ( hp->h_addr, &(addr.sin_addr.s_addr), hp->h_length);
-		// else
-		// {
-			// addr.sin_addr.s_addr = serverip ? serverip : fallbackip;
-		// }
-		// mylog(backporterror,"%d");
-		// mylog(port,"%d");
-// 		if (backporterror > 5)
-// 		{
-// 			serverip = 0;
-// 			if (port == PORT1)
-// 				port = PORT2;
-// 			else if (port == PORT2)
-// 			{
-// 				sleep(60);
-// 				port = PORT1;
-// 			}
-// //			port = port==80?110:80;
-// 			backporterror = 0;
-// 		}
-		// mylog(backporterror,"%d");
-		// mylog(port,"%d");
 		addr.sin_port = htons(port);
 		addr.sin_family = AF_INET;
-    	printf("Trying to connect to %s %d", serveraddress, port);
+  	printf("Trying to connect to %s %d\n", serveraddress, port);
 		if (connect(s, (struct sockaddr *)&addr, sizeof(struct sockaddr_in))<0)
 		{
 			hp = NULL;
-			// serverip = 0;
 			close(s);
 			printf("unable to connect to server from mongoose.c, ip = %u\n",addr.sin_addr.s_addr);
-			// backporterror++;
-//			mac[0] = 0;
-			// try again with IP
-			// addr.sin_addr.s_addr = fallbackip;
-			// if (connect(s, (struct sockaddr *)&addr, sizeof(struct sockaddr_in)) < 0)
-			// {
-			// 	printf("still can't even with ip = %u\n",addr.sin_addr.s_addr);
-			// 	sleep(15);
-			// 	continue;
-			// }
+			sleep(5);
+			continue;
 		}
 
-//		printf("connected to server %d, %d at port %d\n",backnumconn,backactmaxconn,port);
+		printf("connected to server %d, %d at port %d\n",backnumconn,backactmaxconn,port);
+
 		pthread_t backthread;
 		backdata *param = new backdata;
 
@@ -5208,9 +5161,9 @@ void* backserver(void* par)
 		pthread_create(&backthread,NULL,backnewconnection,(void*)param);
 		if (backnumconn >= backactmaxconn)
 		{
-//			printf("START of waiting\n");
+			printf("START of waiting\n");
 			pthread_cond_wait(&backcond,&backmutex);
-//			printf("END of waiting\n");
+			printf("END of waiting\n");
 		}
 		pthread_mutex_unlock(&backmutex);
 	}
