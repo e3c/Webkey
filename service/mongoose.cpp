@@ -3667,7 +3667,7 @@ static int parse_port_string(const struct vec *vec, struct socket *so) {
 }
 
 static int set_ports_option(struct mg_context *ctx) {
-  const char *list = ctx->config[LISTENING_PORTS];
+  const char *list = "";
   int reuseaddr = 1, success = 1;
   SOCKET sock;
   struct vec vec;
@@ -4421,14 +4421,6 @@ int mystrlen(char* c)
 }
 void mg_stop(struct mg_context *ctx) {
   ctx->stop_flag = 1;
-
-  pthread_mutex_lock(&backmutex);
-  pthread_cond_signal(&backcond);
-  pthread_mutex_unlock(&backmutex);
-  // Wait until mg_fini() stops
-  while (ctx->stop_flag != 2) {
-    (void) sleep(0);
-  }
   free_context(ctx);
 
 #if defined(_WIN32)
@@ -4517,18 +4509,6 @@ __system_property_get("ro.serialno",serial_number);
   (void) pthread_cond_init(&ctx->cond, NULL);
   (void) pthread_cond_init(&ctx->sq_empty, NULL);
   (void) pthread_cond_init(&ctx->sq_full, NULL);
-
-  // Start master (listening) thread
-  start_thread(ctx, (mg_thread_func_t) master_thread, ctx);
-
-  // Start worker threads
-  for (i = 0; i < atoi(ctx->config[NUM_THREADS]); i++) {
-    if (start_thread(ctx, (mg_thread_func_t) worker_thread, ctx) != 0) {
-      cry(fc(ctx), "Cannot start worker thread: %d", ERRNO);
-    } else {
-      ctx->num_threads++;
-    }
-  }
 
   return ctx;
 }
