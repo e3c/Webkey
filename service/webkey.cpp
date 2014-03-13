@@ -52,7 +52,9 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 #include "suinput.h"
 #include <stdio.h>
+//#include <sys/types.h>
 #include <sys/socket.h>
+//#include <netinet/in.h>
 #include <stdlib.h>
 #include <strings.h>
 #include "KeycodeLabels.h"
@@ -66,11 +68,14 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include <signal.h>
 #include <sys/wait.h>
 #include <netdb.h>
+//#include <sys/stat.h>
 
 #include <limits.h>
 #include "mongoose.h"
 #include "base64.h"
 
+//#include <sys/wait.h>
+//#include <unistd.h>
 #include <linux/input.h>
 #include <arpa/inet.h>
 #include <pthread.h>
@@ -78,7 +83,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include <dirent.h>
 
 #include "minizip/zip.h"
-
 
 #ifdef ANDROID
 #include <android/log.h>
@@ -110,10 +114,14 @@ static struct structfilename screencapbinaries[]{
 	{"/vendor/bin/fbread 2>&1"},
 	{"/sbin/fbread 2>&1"},
 	{"/data/data/com.magicandroidapps.bettertermpro/bin/fbread 2>&1"},
+//	{"/data/data/com.webkey/fbread"},
 	{NULL}
 };
 
 #define FILENAME_MAX 4096
+//#define LINESIZE 4096
+
+//static HashMap* sessions;
 
 static struct pid {
 	struct pid *next;
@@ -188,6 +196,7 @@ mypopen(const char *program, const char *type)
 	    }
 	}
 
+//	usleep(100000);
 	/* Parent; assume fdopen can't fail. */
 	if (*type == 'r') {
 		iop = fdopen(pdes[0], type);
@@ -263,7 +272,12 @@ struct eqstr
 	}
 };
 
+
+static std::map<std::string, std::string> sl4a_requests;
+static std::map<std::string, int> sl4a_requests_rev;
+
 static std::map<std::string, time_t> access_times;
+static std::string logfile;
 
 char modelname[PROP_VALUE_MAX];
 char manufacturer[PROP_VALUE_MAX];
@@ -272,8 +286,46 @@ static char deflanguage[PROP_VALUE_MAX];//PROP_VALUE_MAX == 92
 
 static bool has_ssl = false;
 
+volatile static int sl4a_port = 0;
+volatile static int sl4a_socket = 0;
+static std::string sl4a_uuid;
+static pthread_mutex_t sl4amutex;
+
 char* humandate(char* buff, long int epoch, int dateformat, int datesep, int datein, int datetimezone);
+static pthread_mutex_t logmutex;
+static pthread_mutex_t netmutex;
 static pthread_mutex_t initfbmutex;
+static void
+access_log(const struct mg_request_info *ri, const char* s)
+{
+	pthread_mutex_lock(&logmutex);
+	std::string log;
+	if (ri && ri->remote_user)
+	{
+		log = ri->remote_user;
+		log += ": ";
+	}
+	log += s;
+	time_t last = access_times[log];
+
+	struct timeval tv;
+	gettimeofday(&tv,0);
+	time_t now = tv.tv_sec;
+	if (last == 0 || now > last+1800)
+	{
+		FILE* f = fopen(logfile.c_str(),"a");
+		if (f)
+		{
+			char conv[LINESIZE];
+			fprintf(f,"[%s] %s\n",humandate(conv,now,0,0,0,0),log.c_str());
+			fclose(f);
+		}
+		access_times[log] = now;
+//		printf("%d\n",now);
+//		printf(" %s %d\n",log.c_str(),access_times[log.c_str()]);
+	}	
+	pthread_mutex_unlock(&logmutex);
+}
 
 static void read_post_data(struct mg_connection *conn,
                 const struct mg_request_info *ri, char** post_data, int* post_data_len)
@@ -286,6 +338,12 @@ static void read_post_data(struct mg_connection *conn,
 	(*post_data)[*post_data_len] = 0;
 	//printf("!%s!\n",*post_data);
 }
+
+
+
+
+static std::vector<std::string> net_iface;
+static std::vector<uint64_t> net_usage;
 
 static std::vector<SESSION*> sessions;
 
@@ -321,18 +379,31 @@ static __u32 requested_ip;
 
 static int port=80;
 static int sslport=443;
-static char* token;
+static char upload_random[11];
+//static int touchcount=0;
 static std::string dir;
 static int dirdepth = 0;
 static std::string passfile;
+//static std::string admin_password;
 struct mg_context       *ctx;
 static char position_value[512];
 static std::string mimetypes[32];
+//static std::string contacts;
+//static std::string sms;
 volatile static bool firstfb = false;
+
+
+volatile static int position_id = 0;
+
+volatile static bool gps_active = false;
+volatile static time_t last_gps_time =0;
 
 volatile static int up = 0;
 volatile static int shutdownkey_up = -1;
 
+volatile static bool recording = false;
+volatile static int recordingnum = 0;
+volatile static int recordingnumfinished = -1;
 static void
 signal_handler(int sig_num)
 {
@@ -341,6 +412,23 @@ signal_handler(int sig_num)
         else
                 exit_flag = sig_num;
 }
+
+struct MESSAGE
+{
+	std::string user;
+	time_t timestamp;
+	std::string message;
+};
+
+static time_t chat_random;
+static std::vector<MESSAGE> chat_messages;
+static std::map<std::string,int> chat_readby;
+static std::map<std::string,int> chat_readby_real;
+static std::map<std::string,int> chat_readby_count;
+static int chat_count;
+static pthread_mutex_t chatmutex;
+static pthread_cond_t chatcond;
+
 
 volatile static bool wakelock;
 volatile static time_t wakelock_lastused;
@@ -466,6 +554,25 @@ static void set_blink(bool blink,int onMS,int offMS)
 
 }
 
+struct NOTIFY{
+	bool smson;
+	bool callon;
+	int interval;
+	bool vibrate;
+	std::string vibratepatt;
+	bool blink;
+	int blinktype;
+	int blinkon;
+	int blinkoff;
+	time_t lastalarm;
+	bool smsalarmed;
+	bool callalarmed;
+	unsigned long lastsmstime;
+	unsigned long lastcalltime;
+};
+
+static struct NOTIFY notify;
+
 static int fbfd = -1;
 static int screencap = -1;
 static int screencap_skipbytes = 0;
@@ -501,10 +608,22 @@ static pthread_mutex_t fbmutex;
 static pthread_mutex_t diffmutex;
 static pthread_mutex_t popenmutex;
 static pthread_mutex_t uinputmutex;
+//static pthread_mutex_t terminalmutex;
 static pthread_cond_t diffcond;
 static pthread_cond_t diffstartcond;
 volatile static int diffcondWaitCounter = 0;
 volatile static int diffcondDiffCounter = 0;
+//static pthread_mutex_t smsmutex;
+//static pthread_cond_t smscond;
+//static pthread_mutex_t contactsmutex;
+//static pthread_cond_t contactscond;
+
+/*
+static bool dyndns = true;
+static __u32 dyndns_last_updated_ip = 0;
+static std::string dyndns_host = "g1.homeip.net";
+static std::string dyndns_base64 = "b3BlcmF0Omxha2F0MTIz";
+*/
 
 //base
 static const char* KCM_BASE[] ={
@@ -623,7 +742,7 @@ static const char* KCM_BASE2[] ={
 
 
 //  ,!,",#,$,%,&,',(,),*,+,,,-,.,/
-int spec1[] = {62,8,75,10,11,12,14,75,16,7,15,70,55,69,56,56,52};
+int spec1[] = {62,8,75,10,11,12,14,75,16,7,15,70,55,69,56,56,52};                      
 int spec1sh[] = {0,1,1,1,1,1,1,0,1,1,1,1,0,0,0,1};
 // :,;,<,=,>,?,@
 int spec2[] = {74,74,17,70,18,55,77};
@@ -659,6 +778,7 @@ struct DEVSPEC{
 static std::map<std::string, std::string> device_names;
 static std::vector<BIND*> speckeys;
 static std::vector<FAST*> fastkeys;
+//static std::map<int, DEVSPEC> device_specific_buttons;
 static int uinput_fd = -1;
 
 bool startswith(const char* st, char* patt)
@@ -719,6 +839,13 @@ int contains(const char* st, const char* patt)
 	return 0;
 }
 
+static void init_fb_for_test()
+{
+//	scrinfo.xres_virtual = 544;
+//	scrinfo.xres = 540;
+//	scrinfo.yres_virtual = scrinfo.yres = 960;
+//	scrinfo.xoffset = scrinfo.yoffset = 0;
+}
 char* humandur(char* buff, int secs)
 {
 	if (secs < 60)
@@ -933,6 +1060,8 @@ void clear(bool exit = true)
 		if (copyfb)
 			delete[] copyfb;
 		copyfb = NULL;
+		if (gps_active)
+			syst("/system/bin/am broadcast -a \"webkey.intent.action.GPS.STOP\" -n \"com.webkey/.GPS\"");
 		if (server_username)
 			delete[] server_username;
 		server_username = NULL;
@@ -949,10 +1078,15 @@ void clear(bool exit = true)
 		sleep(1);
 		pthread_mutex_destroy(&diffmutex);
 		pthread_mutex_destroy(&popenmutex);
+		pthread_mutex_destroy(&logmutex);
+		pthread_mutex_destroy(&sl4amutex);
+		pthread_mutex_destroy(&netmutex);
 		pthread_mutex_destroy(&initfbmutex);
 		pthread_mutex_destroy(&uinputmutex);
+		pthread_mutex_destroy(&chatmutex);
 		pthread_mutex_destroy(&wakelockmutex);
 		pthread_cond_destroy(&diffcond);
+		pthread_cond_destroy(&chatcond);
 		pthread_cond_destroy(&diffstartcond);
 		for(i=0; i < sessions.size(); i++)
 		{
@@ -966,6 +1100,10 @@ void clear(bool exit = true)
 		}
 		if (fbfd >= 0)
 			close(fbfd);
+//		pthread_mutex_destroy(&smsmutex);
+//		pthread_cond_destroy(&smscond);
+//		pthread_mutex_destroy(&contactsmutex);
+//		pthread_cond_destroy(&contactscond);
 	}
 }
 
@@ -975,19 +1113,22 @@ void error(const char *msg,const char *msg2 = NULL, const char *msg3=NULL, const
 #ifdef ANDROID
     __android_log_print(ANDROID_LOG_INFO,"Webkey C++","service stoped");
 #endif
+    access_log(NULL,msg);
     if (msg2)
     {
 	    perror(msg2);
 #ifdef ANDROID
 	    __android_log_print(ANDROID_LOG_ERROR,"Webkey C++",msg2);
 #endif
-   }
-    if (msg3)
+	    access_log(NULL,msg2);
+    }
+    if (msg3) 
     {
 	    perror(msg3);
 #ifdef ANDROID
 	    __android_log_print(ANDROID_LOG_ERROR,"Webkey C++",msg3);
 #endif
+	    access_log(NULL,msg3);
     }
     if (msg4)
     {
@@ -995,6 +1136,7 @@ void error(const char *msg,const char *msg2 = NULL, const char *msg3=NULL, const
 #ifdef ANDROID
 	    __android_log_print(ANDROID_LOG_ERROR,"Webkey C++",msg4);
 #endif
+	    access_log(NULL,msg4);
     }
     clear();
     exit(1);
@@ -1005,6 +1147,8 @@ FILE* fo(const char* filename, const char* mode)
 	FILE* ret = fopen(longname.c_str(),mode);
 	if (!ret)
 		printf("Couldn't open %s with mode %s\n",longname.c_str(), mode);
+//	else
+//		printf("%s is opened.\n",longname.c_str());
 	return ret;
 }
 
@@ -1029,6 +1173,7 @@ static bool load_keys()
 	clear(false);
 	usleep(10000);
 	int i;
+//	FILE* kl = fopen("/android/system/usr/keylayout/Webkey.kl","w");
 	FILE* kl;
 	if (is_icecreamsandwich && geniatech == false)
 	{
@@ -1095,6 +1240,7 @@ static bool load_keys()
 		add_key(0,77,77); //M
 	}
 
+//	FILE* kcm = fopen("/android/system/usr/keychars/Webkey.kcm","w");
 	FILE* kcm;
 	if (is_icecreamsandwich && geniatech == false)
 		kcm = fopen("/system/usr/keychars/Webkey.kcm","w");
@@ -1105,6 +1251,7 @@ static bool load_keys()
 		printf("Couldn't open Webkey.kcm for writing.\n");
 		return false;
 	}
+//	printf("Webkey.kcm is opened.\n");
 	if (is_icecreamsandwich && geniatech == false)
 		fprintf(kcm,"type FULL\n");
 	else
@@ -1194,7 +1341,7 @@ static bool load_keys()
 				if (50==i)
 					speckeys[2*i]->kcm = 17; // STAR
 				if (51==i)
-					speckeys[2*i]->kcm = 18; // POUND
+					speckeys[2*i]->kcm = 18; // POUND 
 				if (52==i)
 					speckeys[2*i]->kcm = 81; // PLUS
 				if (53==i)
@@ -1222,7 +1369,7 @@ static bool load_keys()
 				if (50==i)
 					speckeys[2*i+1]->kcm = 17; // STAR
 				if (51==i)
-					speckeys[2*i+1]->kcm = 18; // POUND
+					speckeys[2*i+1]->kcm = 18; // POUND 
 				if (52==i)
 					speckeys[2*i+1]->kcm = 81; // PLUS
 				if (53==i)
@@ -1272,7 +1419,7 @@ static bool load_keys()
 				if (50==i)
 					speckeys[2*ii]->kcm = 17; // STAR
 				if (51==i)
-					speckeys[2*ii]->kcm = 18; // POUND
+					speckeys[2*ii]->kcm = 18; // POUND 
 				if (52==i)
 					speckeys[2*ii]->kcm = 81; // PLUS
 				if (53==i)
@@ -1300,7 +1447,7 @@ static bool load_keys()
 				if (50==i)
 					speckeys[2*ii+1]->kcm = 17; // STAR
 				if (51==i)
-					speckeys[2*ii+1]->kcm = 18; // POUND
+					speckeys[2*ii+1]->kcm = 18; // POUND 
 				if (52==i)
 					speckeys[2*ii+1]->kcm = 81; // PLUS
 				if (53==i)
@@ -1311,6 +1458,7 @@ static bool load_keys()
 		}
 	}
 	fclose(kcm);
+//	if (compile("/android/system/usr/keychars/Webkey.kcm","/android/system/usr/keychars/Webkey.kcm.bin"))
 	if (is_icecreamsandwich == false && compile("/dev/Webkey.kcm","/dev/Webkey.kcm.bin"))
 	{
 		printf("Couldn't compile kcm to kcm.bin\n");
@@ -1399,15 +1547,20 @@ static void init_uinput()
 		1, /* Product id. */
 		1 /* Version id. */
 	};
+//	uinput_fd = suinput_open("../../../sdcard/Webkey", &uid);
 	printf("suinput init...\n");
 	pthread_mutex_lock(&uinputmutex);
 	usleep(100000);
+//	if (geniatech)
+//		uinput_fd = suinput_open("geniatech4", &uid, use_uinput_mouse);
 	if (is_icecreamsandwich)
 		uinput_fd = suinput_open("Webkey", &uid, use_uinput_mouse);
 	else
 		uinput_fd = suinput_open("/../../../dev/Webkey", &uid, use_uinput_mouse);
 	if (uinput_fd == -1)
 	{
+		//TEMP
+//		uinput_fd = open("/dev/input/event4", O_WRONLY | O_NONBLOCK);
 		use_uinput_mouse = false;
 	}
 
@@ -1415,9 +1568,94 @@ static void init_uinput()
 	usleep(100000);
 	run_load_keys = false;
 	pthread_mutex_unlock(&uinputmutex);
+
+
+
+/*
+	device_specific_buttons.clear();
+	fk = fo("keycodes.txt","r");
+	if (!fk)
+		return;
+	char line[256];
+	while (fgets(line, sizeof(line)-1, fk) != NULL) 
+	{
+		if (line[0] && line[strlen(line)-1]==10)
+			line[strlen(line)-1] = 0;
+		if (line[0] && line[strlen(line)-1]==13)
+			line[strlen(line)-1] = 0;
+		if (strcmp(line,modelname)==0) //this is the right phone
+		{
+			while (fgets(line, sizeof(line)-1, fk) != NULL) 
+			{
+				if (strlen(line) < 3)
+					break;
+//				printf("PROCESSING %s\n",line);
+				if (line[strlen(line)-1]==10)
+					line[strlen(line)-1] = 0;
+				if (line[strlen(line)-1]==13)
+					line[strlen(line)-1] = 0;
+				int n = strlen(line);
+				int pos[2]; pos[0] = pos[1] = 0;
+				int i = 0;
+				int j;
+				for (;i<n-1;i++)
+					if (line[i] == ' ')
+					{
+						pos[0] = i;
+						break;
+					}
+				for (i++;i<n-1;i++)
+					if (line[i] == ' ')
+					{
+						pos[1] = i;
+						break;
+					}
+				line[pos[0]]=0;
+				DEVSPEC q;
+				q.dev = device_names[std::string(line+pos[1]+1)];
+				q.type = 1;
+				q.code = getnum(line+pos[0]+1);
+				j = 0;
+				while (KEYCODES[j].value)
+				{
+					if(strcmp(line,KEYCODES[j].literal)==0)
+					{
+						break;
+					}
+					j++;
+				}
+				device_specific_buttons[KEYCODES[j].value] = q;
+				
+			}
+				
+			
+//		while(fscanf(fk,"%d %d %d\n",&id,&show,&ajax) == 3)
+//		{
+//			if (id-1 < i)
+//			{
+//				fastkeys[id-1]->ajax = ajax;
+//				fastkeys[id-1]->show = show;
+//			}
+//		}
+		}
+		else
+		{
+			bool b = true;
+			while (b && strlen(line)>2)
+			{
+				b = fgets(line, sizeof(line)-1, fk);
+			}
+			if (!b)
+				break;
+		}
+
+	}
+	fclose(fk);
+*/
 }
 
 //from android-vnc-server
+
 static void init_fb(void)
 {
 	pthread_mutex_lock(&initfbmutex);
@@ -1444,6 +1682,7 @@ static void init_fb(void)
 		pthread_mutex_unlock(&initfbmutex);
 		return;
 	}
+//        pixels = scrinfo.xres * scrinfo.yres;
         bytespp = scrinfo.bits_per_pixel / 8;
 	if (bytespp == 3)
 		bytespp = 4;
@@ -1477,6 +1716,12 @@ static void init_fb(void)
 		scrinfo.xres_virtual = scrinfo.xres = 240;
 	if (force_544)
 		scrinfo.xres_virtual = 544;
+	init_fb_for_test();
+
+
+	//TEMP
+	//pixels = 822272;
+	//TEMP
 
 	lowest_offset = scrinfo.xres_virtual*scrinfo.yoffset+scrinfo.xoffset;
 
@@ -1537,6 +1782,12 @@ void init_touch()
 		if(use_uinput_mouse)
 			continue;
 		printf("%s ",name);
+//		if (contains(name,"sec_touchscreen") && is_icecreamsandwich)
+//		{
+//			printf("It contains sec_touchscreen in its name and it's ICS, we try the uinput solution");
+//			use_uinput_mouse = true;
+//			return;
+//		}
 		if (contains(name,"touchscreen"))
 		{
 			printf("There is touchscreen in its name, it must be the right device!\n");
@@ -1697,6 +1948,8 @@ void init_touch()
 		__android_log_print(ANDROID_LOG_INFO,"Webkey C++","using touch device: %s",touch_device);
 #endif
 		printf("xmin = %d, xmax = %d, ymin = %d, ymax = %d\n",xmin,xmax,ymin,ymax);
+//		if (strcmp(name,"qt602240_ts_input")==0)
+//			disable_mouse_pointer = true;
 		if (strcmp(name,"mxt224_ts_input")==0)
 		{
 			touch_mxt224_ts_input = true;
@@ -1707,6 +1960,267 @@ void init_touch()
 	use_uinput_mouse = true;
 }
 
+static void savechat()
+{
+	FILE* f = fo("chat.txt","w");
+	int i;
+	for (i = 0; i < chat_messages.size(); i++)
+		fprintf(f,"%s%c%d%c%s%c",chat_messages[i].user.c_str(),0,chat_messages[i].timestamp,0,chat_messages[i].message.c_str(),0);
+	fprintf(f,"%c",0);
+	for (std::map<std::string,int>::iterator it = chat_readby.begin(); it != chat_readby.end(); it++)
+		fprintf(f,"%s%c%d%c",it->first.c_str(),0,it->second,0);
+	fprintf(f,"%c",0);
+	fclose(f);
+	chmod((dir+"chat.txt").c_str(), S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP);
+	chown((dir+"chat.txt").c_str(), info.st_uid, info.st_gid);
+	chmod((dir+"chat.txt").c_str(), S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP);
+}
+
+static void loadchat()
+{
+	chat_messages.clear();
+	chat_readby.clear();
+	chat_readby_real.clear();
+	std::string longname = dir + "chat.txt";
+	FILE* f = fopen(longname.c_str(),"r");
+	if (!f)
+		return;
+	int i;
+
+	fseek (f , 0 , SEEK_END);
+	int lSize = ftell (f);
+	rewind (f);
+	char* buff = new char[lSize+1];
+	if (!buff)
+	{
+		fclose(f);
+		return;
+	}
+	fread(buff,1,lSize,f);
+
+	i = 0;
+	while(buff[i] && i < lSize)
+	{
+		MESSAGE toload;
+		toload.user = buff+i;
+		while (buff[i] && i < lSize)
+			i++;
+		if (i < lSize)
+			i++;
+		toload.timestamp = getnum(buff+i);
+		while (buff[i] && i < lSize)
+			i++;
+		if (i < lSize)
+			i++;
+		toload.message = buff+i;
+		while (buff[i] && i < lSize)
+			i++;
+		if (i < lSize)
+			i++;
+		chat_messages.push_back(toload);
+	}
+	if (i < lSize)
+		i++;
+	while(buff[i] && i < lSize)
+	{
+		std::string q;
+		int w;
+		q = buff+i;
+		while (buff[i] && i < lSize)
+			i++;
+		if (i < lSize)
+			i++;
+		w = getnum(buff+i);
+		while (buff[i] && i < lSize)
+			i++;
+		if (i < lSize)
+			i++;
+		chat_readby[q] = w;
+		chat_readby_real[q] = w;
+	}
+
+	fclose(f);
+}
+
+static void
+getchatmessage(struct mg_connection *conn,
+                const struct mg_request_info *ri, void *data)
+{
+	if (ri->permissions != PERM_ROOT && (ri->permissions&PERM_CHAT)==0 && ri->remote_ip!=2130706433)
+		return;
+	if (exit_flag)
+		return;
+	int n = strlen(ri->uri);
+	int i = 0;
+	while (i<n && ri->uri[i] != '_') i++;
+	i++;
+	int random = getnum(ri->uri+i);
+	int pos = -1;
+	while (i<n && ri->uri[i] != '_') i++;
+	i++;
+	if (i < n)       	
+		pos = getnum(ri->uri+i);
+	int countpos = -1;
+	while (i<n && ri->uri[i] != '_') i++;
+	i++;
+	if (i < n)       	
+		countpos = getnum(ri->uri+i);
+	std::string username;
+	if (strcmp(ri->remote_user,"JAVA_CLIENT")==0)
+		username = "phone";
+	else
+		username = ri->remote_user;
+	pthread_mutex_lock(&chatmutex);
+	int count = chat_readby[username];
+	int count_real = chat_readby_real[username];
+	if (random != chat_random)
+	{
+		count = 0;
+		count_real = 0;
+	}
+	if (count != count_real)
+	{
+		chat_count++;
+		chat_readby[username] = count_real;
+		count = count_real;
+		pthread_cond_broadcast(&chatcond);
+		savechat();
+	}
+	if (pos == -1)
+		pos = count;
+	if (countpos == -1)
+		countpos = chat_readby_count[username];
+	if (chat_messages.size() == pos && random == chat_random && chat_count == countpos)
+	{
+		if (!exit_flag)
+			pthread_cond_wait(&chatcond,&chatmutex);
+	}
+	if (random != chat_random)
+		pos = 0;
+	char buff[LINESIZE];
+	std::map<int,int> sent;
+	send_ok(conn,"Content-Type: text/xml; charset=UTF-8");
+	mg_printf(conn,"<chat><readbypos>%d</readbypos><id>%d</id>\n",chat_count,chat_random);
+	for (i = pos; i < chat_messages.size(); i++)
+	{
+		MESSAGE* m = &(chat_messages[i]);
+		mg_printf(conn,"<message>");
+		mg_printf(conn,"<user>%s</user>",m->user.c_str());
+		mg_printf(conn,"<time>%d</time>",m->timestamp);
+		convertxml(buff,m->message.c_str());
+		mg_printf(conn,"<data>%s</data>",buff);
+		mg_printf(conn,"</message>\n");
+	}
+	if (pos < chat_messages.size())
+	{
+		//chat_count++;
+		chat_readby_real[username] = chat_messages.size();
+		//pthread_cond_broadcast(&chatcond);
+		//savechat();
+	}
+	chat_readby_count[username] = chat_count;
+	for (std::map<std::string,int>::iterator it = chat_readby.begin(); it != chat_readby.end(); it++)
+	{
+		if (it->first == username && username == "phone")
+			continue;
+		convertxml(buff,it->first.c_str());
+		mg_printf(conn,"<readby name=\"%s\">%d</readby>",buff,it->second);
+	}
+	mg_printf(conn,"</chat>\n");
+	pthread_mutex_unlock(&chatmutex);
+}
+static void
+phonegetchatmessage(struct mg_connection *conn,
+                const struct mg_request_info *ri, void *data)
+{
+	if (ri->remote_ip==2130706433)
+		getchatmessage(conn,ri,data);
+}
+static void
+writechatmessage(struct mg_connection *conn,
+                const struct mg_request_info *ri, void *data)
+{
+	if (ri->permissions != PERM_ROOT && (ri->permissions&PERM_CHAT)==0 && ri->remote_ip!=2130706433)
+		return;
+	lock_wakelock();
+	char* post_data;
+	int post_data_len;
+	read_post_data(conn,ri,&post_data,&post_data_len);
+	send_ok(conn);
+	if (post_data_len == 0)
+		return;
+	MESSAGE load;
+	if (strcmp(ri->remote_user,"JAVA_CLIENT")!=0)
+	{
+		load.user = ri->remote_user;
+	}
+	else
+	{
+		load.user = "phone";
+	}
+	load.timestamp = time(NULL);
+	load.message = std::string(post_data);
+
+	pthread_mutex_lock(&chatmutex);
+	chat_messages.push_back(load);
+	savechat();
+	pthread_cond_broadcast(&chatcond);
+	pthread_mutex_unlock(&chatmutex);
+	usleep(1500000);
+	pthread_mutex_lock(&chatmutex);
+	bool intent = false;
+	if (chat_messages.size() != chat_readby["phone"])
+		intent = true;
+	pthread_mutex_unlock(&chatmutex);
+	if (intent)
+		syst("/system/bin/am broadcast -a \"webkey.intent.action.Chat\" -n \"com.webkey/.ChatReceiver\"");
+	if (post_data)
+		delete[] post_data;
+}
+static void
+phonewritechatmessage(struct mg_connection *conn,
+                const struct mg_request_info *ri, void *data)
+{
+	if (ri->remote_ip==2130706433)
+		writechatmessage(conn,ri,data);
+}
+static void
+clearchatmessage(struct mg_connection *conn,
+                const struct mg_request_info *ri, void *data)
+{
+	if (ri->permissions != PERM_ROOT && (ri->permissions&PERM_CHAT)==0 && ri->remote_ip!=2130706433)
+		return;
+	lock_wakelock();
+//	MESSAGE load;
+//	if (ri->remote_user)
+//		load.user = ri->remote_user;
+//	else
+//		load.user = "phone";
+//	load.timestamp = time(NULL);
+//	load.message = "clear";
+	pthread_mutex_lock(&chatmutex);
+	chat_messages.clear();
+	chat_readby.clear();
+	chat_readby_real.clear();
+	chat_readby_count.clear();
+	struct timeval tv;
+	gettimeofday(&tv,0);
+	chat_random = time(NULL) + tv.tv_usec;
+	chat_count = 1;
+//	chat_messages.push_back(load);
+	savechat();
+	pthread_cond_broadcast(&chatcond);
+	pthread_mutex_unlock(&chatmutex);
+	send_ok(conn);
+}
+static void
+phoneclearchatmessage(struct mg_connection *conn,
+                const struct mg_request_info *ri, void *data)
+{
+	if (ri->remote_ip==2130706433)
+		clearchatmessage(conn,ri,data);
+}
+
 static void
 adjust_light(struct mg_connection *conn,
                 const struct mg_request_info *ri, void *data)
@@ -1715,7 +2229,7 @@ adjust_light(struct mg_connection *conn,
 	    return;
     lock_wakelock();
     send_ok(conn);
-
+    
     int i = getnum(ri->uri+14);
     int fd = open("/sys/class/leds/lcd-backlight/brightness", O_WRONLY);
     if (fd < 0)
@@ -1737,17 +2251,23 @@ waitdiff(struct mg_connection *conn,
 	if (exit_flag)
 		return;
 	send_ok(conn);
+//	printf("connected\n");
 	if (!picchanged)
 	{
+//	printf("start\n");
 		pthread_mutex_lock(&diffmutex);
 		if (!exit_flag)
 			pthread_cond_wait(&diffcond,&diffmutex);
 		pthread_mutex_unlock(&diffmutex);
+//	printf("end\n");
 	}
+//	printf("respond\n");
 	mg_printf(conn,"changed");
 }
 void update_image(int orient,int lowres, bool png, bool flip, bool reread)
 {
+//	printf("update image\n");
+//	fflush(NULL);
 	if ((fbfd < 0 && screencap == -1) || scrinfo.yres == 0)
 		return;
 	if (fbfd >= 0)
@@ -1768,7 +2288,16 @@ void update_image(int orient,int lowres, bool png, bool flip, bool reread)
 			scrinfo.xres_virtual = scrinfo.xres = 240;
 		if (force_544)
 			scrinfo.xres_virtual = 544;
+		init_fb_for_test();
 	}
+//	{
+//	int i;
+//	for (i = 0; i < sizeof(fb_var_screeninfo); i++)
+//	{
+//		printf("%d, ",((char*)&scrinfo)[i]);	
+//	}
+//	printf("\n");
+//	}
 
 	FILE            *fp;
 	png_structp     png_ptr;
@@ -1777,17 +2306,37 @@ void update_image(int orient,int lowres, bool png, bool flip, bool reread)
 	struct jpeg_error_mgr jerr;
 
 	std::string path = "tmp";
+	bool rec = false;
+	if (recording)
+	{
+		rec = true;
+		char num[32];
+		path = std::string("/sdcard/webkey_TEMP/screenshot_");
+		itoa(num,recordingnum++);
+		int l = strlen(num);
+		if (l<2)
+			path = path+"0";
+		if (l<3)
+			path = path+"0";
+		path = path + num;
+	}
 
 	if (png)
 	{
 		path = path + ".png";
-		fp = fo(path.c_str(), "wb");
+		if (rec)
+			fp = fopen(path.c_str(), "wb");
+		else
+			fp = fo(path.c_str(), "wb");
 		if (!fp)
 			return;
 		png_ptr = png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
 		info_ptr = png_create_info_struct(png_ptr);
 		png_init_io(png_ptr, fp);
-		png_set_compression_level(png_ptr, 1);
+		if (rec)
+			png_set_compression_level(png_ptr, 0);
+		else
+			png_set_compression_level(png_ptr, 1);
 		if (orient == 0)
 			png_set_IHDR(png_ptr, info_ptr, scrinfo.xres>>lowres, scrinfo.yres>>lowres,
 				8,//  scrinfo.bits_per_pixel,
@@ -1802,7 +2351,10 @@ void update_image(int orient,int lowres, bool png, bool flip, bool reread)
 	else
 	{
 		path = path + ".jpg";
-		fp = fo(path.c_str(), "wb");
+		if (rec)
+			fp = fopen(path.c_str(), "wb");
+		else
+			fp = fo(path.c_str(), "wb");
 		if (!fp)
 			return;
 		JSAMPROW row_pointer[1];
@@ -1841,6 +2393,8 @@ void update_image(int orient,int lowres, bool png, bool flip, bool reread)
 		br = 24-br;
 	}
 	int j;
+//	printf("rr=%d, rl=%d, gr=%d, gl=%d, br=%d, bl=%d\n",rr,rl,gr,gl,br,bl);
+	
 
 	int x = scrinfo.xres_virtual;
 	int xpic = scrinfo.xres;
@@ -1859,15 +2413,32 @@ void update_image(int orient,int lowres, bool png, bool flip, bool reread)
 
 	if (reread)
 	{
+
+	//	int poffset = (scrinfo.yoffset*x+scrinfo.xoffset);
+	//	printf("%d\n",poffset);
+	//	int p = poffset;
+	//	int i = 0;
+
+	//	printf("before read\n");fflush(NULL);
 		pthread_mutex_lock(&fbmutex);
 		if (fbfd >= 0)
 		{
 			memcpy(copyfb,(char*)fbmmap+offset*bytespp,m*bytespp);
+	//		FILE* f = fopen("/sdcard/fb0","rb");
+	//		printf("%d, %d\n",m,bytespp);
+	//		fflush(NULL);
+	//		fread(copyfb, bytespp, m, f);
+	//		printf("here\n");
+	//		fflush(NULL);
+	//		fclose(f);
 		}
 		else
 		{
 			FILE* sc;
 			fflush(NULL);
+	//		int i;
+	//		for(i = 0; screencapbinaries[i].name!=NULL; i++)
+	//		{
 				if ((sc = mypopen(screencapbinaries[screencap].name,"r"))==NULL)
 				{
 					pthread_mutex_unlock(&fbmutex);
@@ -1879,9 +2450,13 @@ void update_image(int orient,int lowres, bool png, bool flip, bool reread)
 					mypclose(sc);
 					pthread_mutex_unlock(&fbmutex);
 					return;
+	//				continue;
 				}
+	//			printf("update_image read %d*%d bytes\n",
 				fread(copyfb,bytespp,m,sc);
+	//			,bytespp);
 				mypclose(sc);
+	//		}
 		}
 	} // if(reread)
 	offset=0;
@@ -1987,6 +2562,9 @@ void update_image(int orient,int lowres, bool png, bool flip, bool reread)
 							pict[i++] = (((map[p]>>rr)&rm)+((map[p-1]>>rr)&rm)+((map[p+x]>>rr)&rm)+((map[p+x-1]>>rr)&rm))>>2<<rl;
 							pict[i++] = (((map[p]>>gr)&gm)+((map[p-1]>>gr)&gm)+((map[p+x]>>gr)&gm)+((map[p+x-1]>>gr)&gm))>>2<<gl;
 							pict[i++] = (((map[p]>>br)&bm)+((map[p-1]>>br)&bm)+((map[p+x]>>br)&bm)+((map[p+x-1]>>br)&bm))>>2<<bl;
+//							pict[i++] = ((map[p]&255)+(map[p-1]&255)+(map[p+x]&255)+(map[p+x-1]&255))>>2;
+//							pict[i++] = (((map[p]>>8)&255)+((map[p-1]>>8)&255)+((map[p+x]>>8)&255)+((map[p+x-1]>>8)&255))>>2;
+//							pict[i++] = (((map[p]>>16)&255)+((map[p-1]>>16)&255)+((map[p+x]>>16)&255)+((map[p+x-1]>>16)&255))>>2;
 							p += 2*x;
 						}
 					}
@@ -2118,6 +2696,9 @@ void update_image(int orient,int lowres, bool png, bool flip, bool reread)
 							pict[i++] = (((map[p]>>rr)&rm)+((map[p+1]>>rr)&rm)+((map[p+x]>>rr)&rm)+((map[p+x+1]>>rr)&rm))>>2<<rl;
 							pict[i++] = (((map[p]>>gr)&gm)+((map[p+1]>>gr)&gm)+((map[p+x]>>gr)&gm)+((map[p+x+1]>>gr)&gm))>>2<<gl;
 							pict[i++] = (((map[p]>>br)&bm)+((map[p+1]>>br)&bm)+((map[p+x]>>br)&bm)+((map[p+x+1]>>br)&bm))>>2<<bl;
+//							pict[i++] = ((map[p]&255)+(map[p+1]&255)+(map[p+x]&255)+(map[p+x+1]&255))>>2;
+//							pict[i++] = (((map[p]>>8)&255)+((map[p+1]>>8)&255)+((map[p+x]>>8)&255)+((map[p+x+1]>>8)&255))>>2;
+//							pict[i++] = (((map[p]>>16)&255)+((map[p+1]>>16)&255)+((map[p+x]>>16)&255)+((map[p+x+1]>>16)&255))>>2;
 							i -= 6;
 							p+=2;
 						}
@@ -2136,6 +2717,9 @@ void update_image(int orient,int lowres, bool png, bool flip, bool reread)
 							pict[i++] = (((map[p]>>rr)&rm)+((map[p-1]>>rr)&rm)+((map[p+x]>>rr)&rm)+((map[p+x-1]>>rr)&rm))>>2<<rl;
 							pict[i++] = (((map[p]>>gr)&gm)+((map[p-1]>>gr)&gm)+((map[p+x]>>gr)&gm)+((map[p+x-1]>>gr)&gm))>>2<<gl;
 							pict[i++] = (((map[p]>>br)&bm)+((map[p-1]>>br)&bm)+((map[p+x]>>br)&bm)+((map[p+x-1]>>br)&bm))>>2<<bl;
+//							pict[i++] = ((map[p]&255)+(map[p-1]&255)+(map[p+x]&255)+(map[p+x-1]&255))>>2;
+//							pict[i++] = (((map[p]>>8)&255)+((map[p-1]>>8)&255)+((map[p+x]>>8)&255)+((map[p+x-1]>>8)&255))>>2;
+//							pict[i++] = (((map[p]>>16)&255)+((map[p-1]>>16)&255)+((map[p+x]>>16)&255)+((map[p+x-1]>>16)&255))>>2;
 							i -= 6;
 							p += 2*x;
 						}
@@ -2218,7 +2802,7 @@ void update_image(int orient,int lowres, bool png, bool flip, bool reread)
 	{
 		for (i = 0; i < y>>lowres; i++)
 			graph[i] = pict+(i*xpic*3>>lowres);
-	}
+	}	
 	else
 	{
 		for (i = 0; i < x>>lowres; i++)
@@ -2243,6 +2827,14 @@ void update_image(int orient,int lowres, bool png, bool flip, bool reread)
 		jpeg_destroy_compress( &cinfo );
 	}
 	fclose(fp);
+	if (recording)
+		recordingnumfinished = recordingnum-1;
+	else
+		recordingnumfinished = -1;
+
+//	pthread_mutex_lock(&diffmutex);
+//	pthread_cond_broadcast(&diffstartcond);
+//	pthread_mutex_unlock(&diffmutex);
 }
 
 static
@@ -2259,11 +2851,13 @@ void* watchscreen(void* param)
 		pthread_mutex_unlock(&diffmutex);
 		int l = 0;
 		int i;
+		//picchanged = false;
 		while(1)
 		{
 			if (exit_flag)
 				return NULL;
 			usleep(10000);
+//			printf("%d\n",l);
 			pthread_mutex_lock(&fbmutex);
 			if (fbfd >= 0)
 			{
@@ -2279,6 +2873,7 @@ void* watchscreen(void* param)
 					scrinfo.xres_virtual = scrinfo.xres = 240;
 				if (force_544)
 					scrinfo.xres_virtual = 544;
+				init_fb_for_test();
 			}
 			int m = scrinfo.yres*scrinfo.xres;
 			int offset = scrinfo.yoffset*scrinfo.xres_virtual+scrinfo.xoffset;
@@ -2292,6 +2887,7 @@ void* watchscreen(void* param)
 				unsigned int* map;
 				if (fbfd >=0)
 					memcpy(copyfb,(char*)fbmmap+offset*bytespp,m*bytespp);
+					//map = ((unsigned int*)fbmmap)+(offset*bytespp/4);
 				else
 				{
 					FILE* sc;
@@ -2305,6 +2901,7 @@ void* watchscreen(void* param)
 					if (fread(temp,1,screencap_skipbytes,sc) != screencap_skipbytes)
 					{
 						mypclose(sc);
+		//				return NULL;
 						pthread_mutex_unlock(&fbmutex);
 						usleep(100000);
 						continue;
@@ -2348,6 +2945,8 @@ void* watchscreen(void* param)
 					lastpic[22*i+20] != map[157*i+140] ||
 					lastpic[22*i+21] != map[157*i+147])
 					{
+//						printf("CHANGED %d\n",i);
+//						fflush(NULL);
 						picchanged = true;
 						pthread_mutex_lock(&diffmutex);
 						diffcondDiffCounter++;
@@ -2362,9 +2961,18 @@ void* watchscreen(void* param)
 				break;
 
 			l++;
-			if (l > 600)
-				break;
-			usleep(150000);
+			if (recording)
+			{
+				if (l > 3000)
+					break;
+				usleep(10000);
+			}
+			else
+			{
+				if (l > 600)
+					break;
+				usleep(150000);
+			}
 		}
 		if (picchanged == false)
 		{
@@ -2383,7 +2991,7 @@ emptyresponse(struct mg_connection *conn,
 	send_ok(conn);
 }
 static char *jsonEscape(const char *buf, int len);
-
+	
 static int callback(void *NotUsed, int argc, char **argv, char **azColName){
 	int i;
 	struct mg_connection* conn = (struct mg_connection*)NotUsed;
@@ -2414,9 +3022,11 @@ static void
 touch(struct mg_connection *conn,
                 const struct mg_request_info *ri, void *data)
 {
+//	printf("%s\n",ri->uri);
 	if (ri->permissions != PERM_ROOT)
 		return;
 	lock_wakelock();
+	access_log(ri,"touch inject");
 	char* s = ri->uri;
 	int n = 0;
 	char* post_data;
@@ -2439,6 +3049,7 @@ touch(struct mg_connection *conn,
 	int orient = 0;
 	if(use_uinput_mouse == false && (touchfd == -1 || scrinfo.xres == 0 || scrinfo.yres == 0))
 		return;
+//	printf("%s\n",s+i);
 	while(s[i] == '_')
 		i++;
 
@@ -2456,6 +3067,8 @@ touch(struct mg_connection *conn,
 		while (i<n && s[i++]!='_');
 		struct input_event ev;
 
+		//printf("%d. injectTouch x=%d, y=%d, down=%d\n", touchcount++, x, y, down);    
+		//fflush(NULL);
 		if (orient)
 		{
 			int t = x;
@@ -2471,6 +3084,7 @@ touch(struct mg_connection *conn,
 			x = scrinfo.xres - x;
 			y = scrinfo.yres - y;
 		}
+		// Calculate the final x and y
 		if (use_uinput_mouse)
 		{
 			xmin = -2047;
@@ -2493,6 +3107,7 @@ touch(struct mg_connection *conn,
 
 		memset(&ev, 0, sizeof(ev));
 
+//		if (touch_mxt224_ts_input)
 		if (use_uinput_mouse)
 		{
 			if (uinput_fd == -1)
@@ -2959,7 +3574,8 @@ qwerty_press(int fd, int key)
 		suinput_click(fd,81);
 	else if(key=='0')
 		suinput_click(fd,82);
-
+	//printf("%d\n",key);
+			
 }
 // for geniatech
 static void
@@ -3336,7 +3952,7 @@ qwerty_press_usb(int fd, int key)
 		suinput_release(fd, 42); //left shift
 	}
 	//printf("%d\n",key);
-
+			
 }
 static void
 key(struct mg_connection *conn,
@@ -3345,6 +3961,7 @@ key(struct mg_connection *conn,
 	if (ri->permissions != PERM_ROOT)
 		return;
 	lock_wakelock();
+	access_log(ri,"key inject");
 	send_ok(conn);
 	if (uinput_fd == -1 && geniatech == false)
 	{
@@ -3358,6 +3975,8 @@ key(struct mg_connection *conn,
 	int key = 0;
 	bool old = false;
 	int orient = 0;
+//	printf("%s\n",ri->uri);
+		// /oldkey_hn-22 -> -22 key with normal mode, horisontal
 	int n = 0;
 	char* post_data;
 	int post_data_len;
@@ -3366,7 +3985,7 @@ key(struct mg_connection *conn,
 	{
 		delete[] post_data;
 		post_data = 0;
-		if (startswith(ri->uri,"/oldkey") && strlen(ri->uri)>10)
+		if (startswith(ri->uri,"/oldkey") && strlen(ri->uri)>10) 
 		{
 			n = 9;
 			old = true;
@@ -3389,8 +4008,13 @@ key(struct mg_connection *conn,
 			orient = 1;
 		if (strlen(ri->uri)==9 && ri->uri[8] == 's')
 			sms_mode = true;
+//		for (int i =0;i < post_data_len;i++)
+//			printf("%d, ",post_data[i]);
+//		printf("\n");
 	}
-
+//	if (ri->uri[++n] == 0)
+//		return;
+	
 	pthread_mutex_lock(&uinputmutex);
 	while(1)
 	{
@@ -3431,12 +4055,14 @@ key(struct mg_connection *conn,
 				key = (key<<6)+(post_data[n++]&63);
 				q--;
 			}
+//			printf("%d\n",key);
 		}
 		if (key == 0) // I don't know how, but it happens
 		{
 			pthread_mutex_unlock(&uinputmutex);
 			return;
 		}
+//		printf("KEY %d\n",key);
 		if (no_uinput || geniatech)
 		{
 			char device[19] = "/dev/input/event0";
@@ -3490,7 +4116,10 @@ key(struct mg_connection *conn,
 		}
 		if (is_icecreamsandwich && use_generic) // long story, don't ask
 		{
+//			printf("%d\n",key);
 			qwerty_press(uinput_fd, key);
+/*
+*/
 			continue;
 		}
 		int i;
@@ -3499,6 +4128,7 @@ key(struct mg_connection *conn,
 			for (i=0; i < speckeys.size(); i++)
 				if ((speckeys[i]->ajax == key || (old && speckeys[i]->ajax == -key)) && speckeys[i]->sms)
 				{
+//					printf("pressed: %d\n",speckeys[i]->kcm);
 					suinput_press(uinput_fd, 57); //left alt
 					if (speckeys[i]->kcm_sh)
 						suinput_press(uinput_fd, 59); //left shift
@@ -3516,6 +4146,7 @@ key(struct mg_connection *conn,
 			for (i=0; i < speckeys.size(); i++)
 				if ((speckeys[i]->ajax == key|| (old && speckeys[i]->ajax == -key) ) && speckeys[i]->sms == false)
 				{
+//					printf("pressed: %d\n",speckeys[i]->kcm);
 					suinput_press(uinput_fd, 57); //left alt
 					if (speckeys[i]->kcm_sh)
 						suinput_press(uinput_fd, 59); //left shift
@@ -3594,12 +4225,12 @@ key(struct mg_connection *conn,
 			if (spec4sh[key-123]) suinput_release(uinput_fd, 59); //left shift
 			j++;
 		}
-		if (key == -8 || (old && key == 8))
+		if (key == -8 || (old && key == 8)) 
 		{
 			suinput_click(uinput_fd, 67); //BACKSPACE -> DEL
 			j++;
 		}
-		if (key == -13 || key == 13 || key == -10 || key == 10)
+		if (key == -13 || key == 13 || key == -10 || key == 10) 
 		{
 			suinput_click(uinput_fd, 66); //ENTER
 			j++;
@@ -3642,6 +4273,7 @@ key(struct mg_connection *conn,
 			for (i=0; i < speckeys.size(); i++)
 				if ((speckeys[i]->ajax == key|| (old && speckeys[i]->ajax == -key) ))
 				{
+//					printf("pressed: %d\n",speckeys[i]->kcm);
 					suinput_press(uinput_fd, 57); //left alt
 					if (speckeys[i]->kcm_sh)
 						suinput_press(uinput_fd, 59); //left shift
@@ -3668,6 +4300,7 @@ savebuttons(struct mg_connection *conn,
 	if (ri->permissions != PERM_ROOT)
 		return;
 	lock_wakelock();
+	access_log(ri,"modify buttons");
 	char* post_data;
 	int post_data_len;
 	read_post_data(conn,ri,&post_data,&post_data_len);
@@ -3684,6 +4317,7 @@ savebuttons(struct mg_connection *conn,
 			int id = getnum(post_data+i);
 			if (id-1<fastkeys.size())
 				fastkeys[id-1]->show = true;
+//			printf("SHOW %d\n",id-1);
 		}
 		else if (startswith(post_data+i,"keycode_"))
 		{
@@ -3716,6 +4350,7 @@ savekeys(struct mg_connection *conn,
 	if (ri->permissions != PERM_ROOT)
 		return;
 	lock_wakelock();
+	access_log(ri,"modify keys");
 	char* post_data;
 	int post_data_len;
 	read_post_data(conn,ri,&post_data,&post_data_len);
@@ -3790,7 +4425,7 @@ std::string lang(const mg_request_info* ri, const char *key)
 		f = fopen((dir+"language_"+ri->language+".txt").c_str(),"r");
 	char line[1024];
 
-	//printf("searcing for - %s -\n",key);
+	//printf("searcing for - %s -\n",key);	
 	if (f)
 	{
 		if (strcmp(key,"BEFORETIME")==0)
@@ -3802,7 +4437,7 @@ std::string lang(const mg_request_info* ri, const char *key)
 				return "";
 		}
 		int n = strlen(key);
-		while (fgets(line, sizeof(line)-1, f) != NULL)
+		while (fgets(line, sizeof(line)-1, f) != NULL) 
 		{
 			int l = strlen(line);
 			if (l && line[l-1] == 10)
@@ -3818,6 +4453,7 @@ std::string lang(const mg_request_info* ri, const char *key)
 			}
 			if (strncmp(key,line,n) == 0 && line[n] == ' ' && line[n+1] == '-' && line[n+2] == '>' && line[n+3] == ' ')
 			{
+//				printf("found\n");	
 				fclose(f);
 				return line+n+4;
 			}
@@ -3825,6 +4461,7 @@ std::string lang(const mg_request_info* ri, const char *key)
 		fclose(f);
 		return key;
 	}
+//	printf("not found");
 	return key;
 }
 static void
@@ -3850,6 +4487,7 @@ cgi(struct mg_connection *conn,
 			filebuffer[start] = 0;
 			start += 1;
 			mg_printf(conn,"%s",lang(ri,filebuffer+i).c_str());
+//			printf("%s : %s\n",filebuffer+i, lang(ri,filebuffer+i));
 			i = start;
 		}
 		else
@@ -3885,6 +4523,7 @@ cgi(struct mg_connection *conn,
 					for (int j=0; j < fastkeys.size(); j++)
 						if (1 || fastkeys[j]->show)
 						{
+//							mg_printf(conn,"<input type=\"button\" class=\"butt\" value=\"%s\" onclick=\"makeRequest('button_%d','')\"/>",lang(ri,fastkeys[j]->name),j+1);
 							mg_printf(conn,"<div class=\"widget\" id=\"button_%s\"><input type=\"button\" class=\"butt\" value=\"%s\" onclick=\"makeRequest('button_%d','')\"/></div>",fastkeys[j]->name,lang(ri,fastkeys[j]->name).c_str(),j+1);
 						}
 				i = start;
@@ -3955,6 +4594,32 @@ cgi(struct mg_connection *conn,
 				else
 					i = start;
 			}
+//			else
+//			if (strncmp("IFNOTZTEBLADE",filebuffer+i,13)==0)
+//			{
+//				if (!is_zte_blade)
+//				{
+//					filebuffer[start-2] = ' ';
+//					filebuffer[start-1] = ' ';
+//					i = i+13;
+//					start = i;
+//				}
+//				else
+//					i = start;
+//			}
+//			else
+//			if (strncmp("ONLYADMIN",filebuffer+i,9)==0)
+//			{
+//				if (ri && ri->remote_user && strcmp(ri->remote_user,"admin") == 0 )
+//				{
+//					filebuffer[start-2] = ' ';
+//					filebuffer[start-1] = ' ';
+//					i = i+9;
+//					start = i;
+//				}
+//				else
+//					i = start;
+//			}
 			else
 			if (strncmp("CHANGE2SSL",filebuffer+i,10)==0)
 			{
@@ -4079,6 +4744,7 @@ cgi(struct mg_connection *conn,
 		else
 			i++;
 	}
+//	printf("i=%d, start=%d\n");
 	mg_write(conn,filebuffer+start,i-start);
 }
 static void
@@ -4089,11 +4755,55 @@ sendmenu(struct mg_connection *conn,
 	mg_printf(conn,"<div id=\"tabs\"><ul>");
 	if (ri->permissions == PERM_ROOT || (ri->permissions&PERM_SCREENSHOT))
 		mg_printf(conn,"<li><a href=\"phone.html\" target=\"_top\"><span>%s</span></a></li> ",lang(ri,"Phone").c_str());
+	if (ri->permissions == PERM_ROOT || (ri->permissions&PERM_GPS))
+		mg_printf(conn,"<li><a href=\"gps.html\" target=\"_top\"><span>%s</span></a></li> ",lang(ri,"GPS").c_str());
+	if (ri->permissions == PERM_ROOT || (ri->permissions&PERM_SMS_CONTACT))
+	{
+		mg_printf(conn,"<li><a href=\"sms.html\" target=\"_top\"><span>%s</span></a></li>",lang(ri,"SMS").c_str());
+		mg_printf(conn,"<li><a href=\"calls.html\" target=\"_top\"><span>%s</span></a></li> ",lang(ri,"Call list").c_str());
+		mg_printf(conn,"<li><a href=\"net.html\" target=\"_top\"><span>%s</span></a></li> ",lang(ri,"Net").c_str());
+	}
 	if (ri->permissions == PERM_ROOT)
 	{
+		mg_printf(conn,"<li><a href=\"notify.html\" target=\"_top\"><span>%s</span></a></li>",lang(ri,"Notify").c_str());
 		mg_printf(conn,"<li><a href=\"terminal.html\" target=\"_top\"><span>%s</span></a></li> ",lang(ri,"Terminal").c_str());
 	}
+	if (ri->permissions == PERM_ROOT || (ri->permissions&PERM_SMS_CONTACT))
+		mg_printf(conn,"<li><a href=\"export.html\" target=\"_top\"><span>%s</span></a></li> ",lang(ri,"Export").c_str());
+	//if (ri->permissions == PERM_ROOT)
+	if (ri->permissions == PERM_ROOT || (ri->permissions&PERM_FILES) || (ri->permissions&PERM_PUBLIC))
+		mg_printf(conn,"<li><a href=\"files.html\" target=\"_top\"><span>%s</span></a></li> ",lang(ri,"Files").c_str());
+	if (ri->permissions == PERM_ROOT || (ri->permissions&PERM_SDCARD))
+		mg_printf(conn,"<li><a href=\"sdcard.html\" target=\"_top\"><span>%s</span></a></li> ",lang(ri,"Sdcard").c_str());
+//	mg_printf(conn,"<a href=\"help.html\" target=\"_top\">help</a> <a href=\"\" onclick=\"document.location.replace(document.location.href.replace(/:\\/\\//,':\\/\\/logout:logout@'))\"target=\"_top\">log out</a></div>");
+//	mg_printf(conn,"<a href=\"help.html\" target=\"_top\">help</a> <a href=\"logout\" onclick=\"try {document.execCommand('ClearAuthenticationCache');} catch (exception) {}; document.location=document.location.href.replace(/:\\/\\//,':\\/\\/logout:logout@')\" target=\"_top\">log out</a></div>");
+	mg_printf(conn,"<li><a href=\"help.html\" target=\"_top\"><span>%s</span></a></li> ",lang(ri,"Help").c_str());
 	mg_printf(conn,"<li id=\"menulastli\"></li></ul></div>");
+//	mg_printf(conn,"<li><span>Webkey %s<br/> %s</span></li> ",VERSION, ri->remote_user);
+//	mg_printf(conn,"<li> <a href=\"config\" target=\"_top\"><span>%s</span></a>",lang(ri,"Config").c_str());
+/*	if ((ri->permissions == PERM_ROOT || (ri->permissions&PERM_CHAT)) && strcmp(ri->uri,"/pure_menu_nochat.html"))
+	{
+		pthread_mutex_lock(&chatmutex);
+		pthread_cond_broadcast(&chatcond);
+		pthread_mutex_unlock(&chatmutex);
+		FILE* f;
+		f = fo("chat.html","rb");
+		if(!f)
+			return;
+		fseek (f , 0 , SEEK_END);
+		int lSize = ftell (f);
+		rewind (f);
+		char* filebuffer = new char[lSize+1];
+		if (filebuffer)
+		{
+			fread(filebuffer,1,lSize,f);
+			filebuffer[lSize] = 0;
+			cgi(conn,ri,data,lSize,filebuffer);
+			fclose(f);
+			delete[] filebuffer;
+		} //what can we do with no memory?
+	}
+*/
 }
 
 
@@ -4110,7 +4820,10 @@ getfile(struct mg_connection *conn,
 		return;
 	fseek (f , 0 , SEEK_END);
 	int lSize = ftell (f);
-  send_ok(conn,NULL);
+//	if (saysize)
+//		send_ok(conn,NULL,lSize);
+//	else
+		send_ok(conn,NULL);
 	rewind (f);
 	char* filebuffer = new char[lSize+1];
 	if (filebuffer)
@@ -4228,6 +4941,9 @@ qwerty_button(int fd, int key, int time)
 		key = 116;
 	else if (key == 23) // center
 		key = 97;
+	//			else if (key == 28) // keep alive -> ctrl_left, needs test for that
+	//				key = 29;
+	//			printf("button %d\n",key);
 	if (time)
 	{
 		struct input_event event;
@@ -4267,6 +4983,9 @@ geniatech_button(int fd, int key, int time)
 		key = 116;
 	else if (key == 23) // center
 		key = 97;
+	//			else if (key == 28) // keep alive -> ctrl_left, needs test for that
+	//				key = 29;
+	//			printf("button %d\n",key);
 	if (time)
 	{
 		struct input_event event;
@@ -4304,8 +5023,10 @@ qwerty_button_usb(int fd, int key, int time)
 		key = 59;
 	else if (key == 6) // end -> power
 		key = 116;
-	else if (key == 28) // keep alive ->
+	else if (key == 28) // keep alive -> 
 		return;
+	//				key = 29;
+	//			printf("button %d\n",key);
 	if (time)
 	{
 		struct input_event event;
@@ -4326,8 +5047,13 @@ static void
 button(struct mg_connection *conn,
                 const struct mg_request_info *ri, void *data)
 {
+//	TEST
+//	if (ri->permissions != PERM_ROOT)
+//		return;
+
 	send_ok(conn);
 	lock_wakelock();
+	access_log(ri,"button inject");
 	int key = getnum(ri->uri+8);
 	int i = 8;
 	while(ri->uri[i] && ri->uri[i] != '_') i++;
@@ -4386,6 +5112,14 @@ button(struct mg_connection *conn,
 		generic_button(uinput_fd, key, time);
 		return;
 	}
+//	if (samsung && key == 28)
+//		key = 63;
+
+//	if (geniatech)
+//	{
+//		geniatech_button(uinput_fd, key, time);
+//		return;
+//	}
 	// for samsung galaxy s 2
 	std::string devpath = device_names["sec_key"];
 	if ((key == 24 || //VOL_UP
@@ -4442,7 +5176,47 @@ button(struct mg_connection *conn,
 	    }
 	}
 
+//	printf("KEY = %d\n",key);
+//	for (std::map<int,DEVSPEC>::const_iterator it = device_specific_buttons.begin(); it != device_specific_buttons.end(); it++)
+//	{
+//		printf("%d: %d\n",it->first,it->second.dev);
+//	}
+
+//	printf("Size = %d -> ",device_specific_buttons.size());
+//	DEVSPEC d = device_specific_buttons[key];
+//	printf("%d\n",device_specific_buttons.size());
+/*	if (d.dev || d.type || d.code)
 	{
+		int dev;
+		char file[20];
+		strcpy(file,"/dev/input/eventX");
+		file[strlen(file)-1] = 48+d.dev;
+//		printf("%s\n",file);
+//		printf("%d\n",d.dev);
+//		printf("%d\n",d.type);
+//		printf("%d\n",d.code);
+		if((dev = open(file, O_WRONLY)) == -1)
+		{
+			return;
+		}
+		struct input_event event;
+		memset(&event, 0, sizeof(event));
+		gettimeofday(&event.time, 0);
+		event.type = d.type;
+		event.code = d.code;
+		event.value = 1;
+		write(dev, &event, sizeof(event));
+		usleep(time*1000000);
+		event.value = 0;
+		write(dev, &event, sizeof(event));
+		//printf("OK\n");
+		close(dev);
+
+	}
+	else
+*/	{
+//	printf("button: %d\n",key);
+//		if (no_uinput)
 		if (no_uinput)
 		{
 			if (key == 28 && is_icecreamsandwich)
@@ -4526,6 +5300,134 @@ config_buttons(struct mg_connection *conn,
 	mg_printf(conn,"</script></body></html>");
 }
 static void
+notify_html(struct mg_connection *conn,
+                const struct mg_request_info *ri, void *data)
+{
+	if (ri->permissions != PERM_ROOT)
+		return;
+	lock_wakelock();
+	getfile(conn,ri,data);
+	mg_printf(conn,"<script type=\"text/javascript\" language=\"javascript\">\n");
+	mg_printf(conn,"document.getElementById('callon').checked = %s;\n",notify.callon?"true":"false");
+	mg_printf(conn,"document.getElementById('smson').checked = %s;\n",notify.smson?"true":"false");
+	mg_printf(conn,"document.getElementById('interval').value = %d;\n",notify.interval);
+	mg_printf(conn,"document.getElementById('vibrate').checked = %s;\n",notify.vibrate?"true":"false");
+	std::string t;
+	int i;
+	for (i = 0; i < notify.vibratepatt.length(); i++)
+	{
+		if (notify.vibratepatt[i] != '~')
+			t += notify.vibratepatt[i];
+		else
+			t += ',';
+	}
+	mg_printf(conn,"document.getElementById('vibratepatt').value = \"%s\";\n",t.c_str());
+	mg_printf(conn,"document.getElementById('blink').checked = %s;\n",notify.blink?"true":"false");
+	mg_printf(conn,"document.getElementById('blinktype').selectedIndex = \"%d\";\n",notify.blinktype);
+	mg_printf(conn,"document.getElementById('blinkon').checked = %d;\n",notify.blinkon);
+	mg_printf(conn,"document.getElementById('blinkoff').checked = %d;\n",notify.blinkoff);
+	mg_printf(conn,"</script></body></html>");
+}
+static bool
+setupnotify(char * st, bool test = false)
+{
+	int n = strlen(st);
+	if (st[n-1] == '\n')
+		st[--n] = 0;
+	int pos[8];
+	int i;
+	i = 0;
+	int j;
+	j = 0;
+	while(st[i] && j < 8 && i < n)
+	{
+		if (st[i] == '_')
+		{
+			st[i] = 0;
+			pos[j++] = i+1;
+		}
+		i++;
+	}
+	if (j<8)
+		return false;
+	set_blink(0,0,0);
+	if (startswith(st,"true") || startswith(st,"checked"))
+		notify.callon = true;
+	else
+		notify.callon = false;
+	if (startswith(st+pos[0],"true") || startswith(st+pos[0],"checked"))
+		notify.smson = true;
+	else
+		notify.smson = false;
+	notify.interval = getnum(st+pos[1]);
+	if (startswith(st+pos[2],"true") || startswith(st+pos[2],"checked"))
+		notify.vibrate = true;
+	else
+		notify.vibrate = false;
+	notify.vibratepatt = std::string(st+pos[3]);
+	if (startswith(st+pos[4],"true") || startswith(st+pos[4],"checked"))
+		notify.blink = true;
+	else
+		notify.blink = false;
+	notify.blinktype = getnum(st+pos[5]);
+	notify.blinkon = getnum(st+pos[6]);
+	notify.blinkoff = getnum(st+pos[7]);
+
+	notify.lastalarm = -1000000;
+	if (test)
+	{
+		if (notify.blink)
+			set_blink(1,notify.blinkon,notify.blinkoff);
+		if (notify.vibrate)
+		{
+			int v, p, i;
+			p = 0; v = 0;
+			i = -1;
+			bool b;
+			b = false;
+			while (i < notify.vibratepatt.size() || i == -1)
+			{
+				if (i == -1 || notify.vibratepatt[i] == '~')
+				{
+					p = v;
+					v = getnum(notify.vibratepatt.c_str()+i+1);
+					b = !b;
+					if (b)
+						vibrator_on(v);
+					else
+						usleep((p+v)*1000);
+				}
+				i++;
+			}
+			if (!b && notify.blink)
+				usleep(v*1000);
+		}
+		if (notify.blink)
+			set_blink(0,0,0);
+	}
+	return true;
+}
+static void
+setnotify(struct mg_connection *conn,
+                const struct mg_request_info *ri, void *data)
+{
+	if (ri->permissions != PERM_ROOT)
+		return;
+	lock_wakelock();
+	access_log(ri,"setup notify");
+	send_ok(conn);
+	if (ri->uri[10] == '_')
+	{
+		FILE * out = fopen((dir+"notify.txt").c_str(),"w");
+		if (out)
+		{
+			fprintf(out,"%s",ri->uri+11);
+			fclose(out);
+		}
+		setupnotify(ri->uri+11,true);
+	}
+}
+static void
 config_keys(struct mg_connection *conn,
                 const struct mg_request_info *ri, void *data)
 {
@@ -4579,7 +5481,11 @@ getreg(struct mg_connection *conn,
 	if (ri->remote_ip!=2130706433 || strcmp(ri->remote_user,"JAVA_CLIENT") != 0) //localhost
 		return;
 	send_ok(conn);
+//	printf("getreg called\n"); fflush(NULL);
+//	printf("%s\n%s\n%u",requested_username.c_str(),requested_password.c_str(),requested_ip);fflush(NULL);
+
 	mg_printf(conn,"%s\n%s\n%u",requested_username.c_str(),requested_password.c_str(),requested_ip);
+
 	requested_username = "";
 	requested_password = "";
 }
@@ -4587,6 +5493,7 @@ static void
 reg(struct mg_connection *conn,
                 const struct mg_request_info *ri, void *data)
 {
+//	printf("reg called\n"); fflush(NULL);
 	bool r = true;
 	std::string sharedpref = dir + "../shared_prefs/com.webkey_preferences.xml";
 	FILE* sp = fopen(sharedpref.c_str(),"r");
@@ -4639,6 +5546,7 @@ reg(struct mg_connection *conn,
 		requested_username = "";
 		return;
 	}
+//	printf("%s\n%s\n%u",requested_username.c_str(),requested_password.c_str(),requested_ip);fflush(NULL);
 	requested_ip = ri->remote_ip;
 	char to[FILENAME_MAX];
 	strcpy(to,requested_username.c_str());
@@ -4674,6 +5582,9 @@ setpassword(struct mg_connection *conn,
 			pos[j++] = i+1;
 		}
 	}
+//	printf("username = %s\n",post_data);
+//	printf("password = %s\n",post_data+pos[0]);
+//	fflush(NULL);
 	mg_modify_passwords_file(ctx, (dir+passfile).c_str(), post_data, post_data+pos[0],-2);
 	chmod((dir+passfile).c_str(), S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP);
 	chown((dir+passfile).c_str(), info.st_uid, info.st_gid);
@@ -4700,6 +5611,10 @@ setpermission(struct mg_connection *conn,
 			pos[j++] = i+1;
 		}
 	}
+//	printf("setpermission:\n");
+//	printf("username = %s\n",post_data);
+//	printf("password = %s\n",post_data+pos[0]);
+//	printf("permission = %s\n",post_data+pos[1]);
 	mg_modify_passwords_file(ctx, (dir+passfile).c_str(), post_data, post_data+pos[0],getnum(post_data+pos[1]));
 	chmod((dir+passfile).c_str(), S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP);
 	chown((dir+passfile).c_str(), info.st_uid, info.st_gid);
@@ -4711,8 +5626,8 @@ static void
 config(struct mg_connection *conn,
                 const struct mg_request_info *ri, void *data)
 {
-	if (ri->permissions != PERM_ROOT)
-		return;
+//	if (ri->permissions != PERM_ROOT)
+//		return;
 	lock_wakelock();
 	char* post_data;
 	int post_data_len;
@@ -4732,15 +5647,15 @@ config(struct mg_connection *conn,
 	{
 //		printf("%s\n",ri->post_data);
 		if (!memcmp(post_data+i, "username",8))
-		{
+		{	
 			i+=9;
 			j = 0;
 			while(i<n && post_data[i] != '&' && j<255)
-				name[j++] = post_data[i++];
+				name[j++] = post_data[i++];		
 			name[j] = 0; i++;
 		}
 		else if (!memcmp(post_data+i, "permission",10))
-		{
+		{	
 			changed_perm = true;
 			changed = true;
 			i+=10;
@@ -4752,9 +5667,9 @@ config(struct mg_connection *conn,
 				else
 					permissions = permissions | (1<<(p-1));
 			}
-
+			
 			while(i<n && post_data[i] != '&')
-				i++;
+				i++;		
 			i++;
 		}
 		else if (!memcmp(post_data+i, "password",8))
@@ -4762,12 +5677,13 @@ config(struct mg_connection *conn,
 			i+=9;
 			int k = 0;
 			while(i<n && post_data[i] != '&' && k<255)
-				pass[k++] = post_data[i++];
+				pass[k++] = post_data[i++];		
 			pass[k] = 0; i++;
 			if (j && k)
 			{
 				if (ri->permissions == PERM_ROOT || strcmp(ri->remote_user,name)==0)
 				{
+					access_log(ri,"modify users");
 					url_decode(name, strlen(name), name, FILENAME_MAX, true);
 					url_decode(pass, strlen(pass), pass, FILENAME_MAX, true);
 					for (int q = 0; q < strlen(name); q++)
@@ -4785,6 +5701,7 @@ config(struct mg_connection *conn,
 			{
 				if (ri->permissions == PERM_ROOT)
 				{
+					access_log(ri,"modify users");
 					url_decode(name, strlen(name), name, FILENAME_MAX, true);
 					for (int q = 0; q < strlen(name); q++)
 						if (name[q] == ':')
@@ -4793,6 +5710,26 @@ config(struct mg_connection *conn,
 				}
 				changed = true;
 			}
+		}
+		else if (!memcmp(post_data+i, "dellog",6))
+		{
+			if (ri->permissions == PERM_ROOT)
+			{
+				
+				pthread_mutex_lock(&logmutex);
+				FILE* f = fopen(logfile.c_str(),"w");
+				if (f)
+				{
+					fclose(f);
+					access_times.clear();
+					pthread_mutex_unlock(&logmutex);
+					access_log(ri,"clear log");
+				}
+				else
+					pthread_mutex_unlock(&logmutex);
+			}
+			changed = true;
+			break;
 		}
 		else
 			i++;
@@ -4807,6 +5744,7 @@ config(struct mg_connection *conn,
 			if (name[q] == ':')
 				name[q] = ' ';
 		mg_modify_passwords_file(ctx, (dir+passfile).c_str(), name, pass,permissions);
+		access_log(ri,"modify permissions");
 	}
 	if (changed)
 	{
@@ -4823,18 +5761,19 @@ config(struct mg_connection *conn,
         mg_printf(conn,"<link href=\"css/jquery-ui.css\" rel=\"stylesheet\" type=\"text/css\"/><link href=\"css/webkey.css\" rel=\"stylesheet\" type=\"text/css\"/><link rel=\"shortcut icon\" href=\"favicon.ico\"><script src=\"js/jquery.js\"></script><script src=\"js/jquery-ui.min.js\"></script><script src=\"js/webkey.js\"></script></head><body>");
 	if (!data)
 		sendmenu(conn,ri,NULL);
+//	mg_printf(conn,"<br/>Users. The user \'admin\' will have ALL permissions and a random password each time you start the service. Empty passwords are not allowed.<br/>");
 	char line[256]; char domain[256];
 	FILE* fp = fo(passfile.c_str(),"r");
 	if (!fp)
 		return;
-	while (fgets(line, sizeof(line)-1, fp) != NULL)
+	while (fgets(line, sizeof(line)-1, fp) != NULL) 
 	{
 		permissions = -1;
 		if (sscanf(line, "%[^:]:%[^:]:%[^:]:%d", name, domain, pass, &permissions) < 3)
 			continue;
 		if (ri->permissions != PERM_ROOT && strcmp(name,ri->remote_user)!=0)
 			continue;
-
+			
 		mg_printf(conn,"<hr/>");
 		mg_printf(conn,"<form name=\"%s_form\" method=\"post\">%s: <input type=\"text\" readonly=\"readonly\" value=\"%s\" name=\"username\">",name,lang(ri,"username").c_str(),name);
 		mg_printf(conn,"%s: <input type=\"password\" name=\"password\"></input>",lang(ri,"password").c_str());
@@ -4855,6 +5794,8 @@ config(struct mg_connection *conn,
 		if (ri->permissions == PERM_ROOT)
 			mg_printf(conn,"<input type=\"submit\" value=\"%s\"></input>",lang(ri,"Save permissions").c_str());
 		mg_printf(conn,"<br/>");
+//		if (!strcmp(name,"admin"))
+//			mg_printf(conn,"This password will change on every restart\n");
 		mg_printf(conn,"</form>\n");
 	}
 	mg_printf(conn,"<hr/>");
@@ -4882,7 +5823,22 @@ config(struct mg_connection *conn,
 	mg_printf(conn,"%s",lang(ri,"Read all files on the phone. Be careful, the contacts, messages, call list and the passwords of Webkey are stored in files!").c_str());
 	mg_printf(conn,"<h4 class=\"list\">%s</h4>",lang(ri,"Sdcard").c_str());
 	mg_printf(conn,"%s",lang(ri,"Read and modify the content of the sdcard.").c_str());
-
+	
+	if (ri->permissions == PERM_ROOT)
+	{
+		mg_printf(conn,"<h3>%s</h3>",lang(ri,"Log (activities is logged once in every 30 minutes)").c_str());
+		FILE *f = fopen(logfile.c_str(),"r");
+		if(f)
+		{
+			char buff[256];
+			while (fgets(buff, sizeof(buff)-1, f) != NULL)
+			{
+				mg_printf(conn,"%s<br/>",buff);
+			}
+			fclose(f);
+		}
+		mg_printf(conn,"<form name=\"dellog_form\" method=\"post\"><input type=\"hidden\" name=\"dellog\" value=\"dellog\"><input type=\"submit\" value=\"%s\"></input></form>",lang(ri,"Clear log").c_str());
+	}
 	mg_printf(conn,"</body></html>");
 	if (post_data)
 		delete[] post_data;
@@ -4891,8 +5847,10 @@ static void
 screenshot(struct mg_connection *conn,
                 const struct mg_request_info *ri, void *data)
 {
-	printf("HERE %s\n", ri->uri);
+	if (ri->permissions != PERM_ROOT && (ri->permissions&PERM_SCREENSHOT)==0)
+		return;
 	lock_wakelock();
+	access_log(ri,"view screenshot");
 	int orient = 0;
 	bool png = false;
 	if (ri->uri[12] == 'p')
@@ -4918,7 +5876,7 @@ screenshot(struct mg_connection *conn,
 	}
 	lastorient = orient;
 	lastflip = flip;
-	printf("HERE\n");
+
 //int r = rand();
 //printf("in %d\n",r);
 
@@ -4953,9 +5911,39 @@ screenshot(struct mg_connection *conn,
 		init_fb();
 	FILE* f;
 	std::string path = dir+"tmp";
-	pthread_mutex_lock(&pngmutex);
-	update_image(orient,lowres,png,flip,!wait);
-	pthread_mutex_unlock(&pngmutex);
+	if (!recording)
+	{
+//		if (!pthread_mutex_trylock(&pngmutex))
+//		{
+//			update_image(orient,lowres,png,flip);
+//			pthread_mutex_unlock(&pngmutex);
+//		}
+//		else
+//		{
+//			pthread_mutex_lock(&pngmutex);
+//			pthread_mutex_unlock(&pngmutex);
+//		}
+		pthread_mutex_lock(&pngmutex);
+		update_image(orient,lowres,png,flip,!wait);
+		pthread_mutex_unlock(&pngmutex);
+	}
+	else
+	{
+		char num[32];
+		path = "/sdcard/webkey_TEMP/screenshot_";
+		pthread_mutex_lock(&pngmutex);
+		int fin = recordingnumfinished;
+		pthread_mutex_unlock(&pngmutex);
+		itoa(num,fin);
+		int l = strlen(num);
+		if (l<2)
+			path = path+"0";
+		if (l<3)
+			path = path+"0";
+		path = path + num;
+		if (fin < 0)
+			path = dir+"tmp";
+	}
 	if (png)
 	{
 		path += ".png";
@@ -4980,6 +5968,7 @@ screenshot(struct mg_connection *conn,
 	}
 	fread(filebuffer,1,lSize,f);
 	filebuffer[lSize] = 0;
+	//printf("sent bytes = %d\n",mg_write(conn,filebuffer,lSize));
 	if (asfile)
 	{
 		if (png)
@@ -4990,8 +5979,10 @@ screenshot(struct mg_connection *conn,
 	mg_write(conn,filebuffer,lSize);
 	fclose(f);
 	delete[] filebuffer;
+//printf("out %d\n",r);
 }
-#define mylog(x,fmt)
+//#define mylog(x,fmt) {FILE* __f = fopen("/data/data/com.webkey/log.txt","a"); if (__f) {fprintf(__f,"%s:%u (%d,%d) %s="fmt"\n",__FILE__, __LINE__, pthread_self(), time(NULL), #x,x); fclose(__f); } printf("%s:%u (%d,%d) %s="fmt"\n",__FILE__, __LINE__, pthread_self(), time(NULL), #x,x);}
+#define mylog(x,fmt) 
 static void
 stop(struct mg_connection *conn,
                 const struct mg_request_info *ri, void *data)
@@ -5000,9 +5991,11 @@ stop(struct mg_connection *conn,
 	send_ok(conn);
 	if (ri->remote_ip==2130706433) //localhost
 	{
+//		printf("Stopping server...\n");
 		mylog("stopping","%s");
 		exit_flag = 2;
 		mg_printf(conn,"Goodbye.");
+		access_log(ri,"stop service");
 	}
 }
 static void
@@ -5012,6 +6005,7 @@ run(struct mg_connection *conn,
 	if (ri->permissions != PERM_ROOT)
 		return;
 	lock_wakelock();
+	access_log(ri,"run command");
 	char* post_data;
 	int post_data_len;
 	read_post_data(conn,ri,&post_data,&post_data_len);
@@ -5036,6 +6030,7 @@ run(struct mg_connection *conn,
 		delete[] post_data;
 	call += " 2>&1";
 	FILE* in;
+//	printf("%s\n",call.c_str());
 	fflush(NULL);
 
 
@@ -5077,8 +6072,14 @@ run(struct mg_connection *conn,
 
 	(void)close(pdes[1]);
 
+
+//	if ((in = mypopen(call.c_str(),"r")) == NULL)
+//		return;
 	char buff[256];
 	bool empty = true;
+//	struct timeval tv;
+//	gettimeofday(&tv,0);
+//	time_t lasttime = tv.tv_sec;
 	while (1)
 	{
 		fd_set set;
@@ -5100,9 +6101,54 @@ run(struct mg_connection *conn,
 			mg_printf(conn,"%s",buff);
 			empty = false;
 		}
+//		kill(pid,SIGKILL);
+/*		while (fgets(buff, sizeof(buff)-1, in) != NULL)
+		{
+			int i = mg_printf(conn, "%s",buff);
+			empty = false;
+			if (buff[0] && i == 0)
+				break;
+			gettimeofday(&tv,0);
+			if (lasttime + 120 < tv.tv_sec)
+				break;
+		}
+*/
+//		mypclose(in);
 	}
 	if (empty)
 		mg_printf(conn,"</pre>empty<pre>");
+}
+static void
+sendsms(struct mg_connection *conn,
+                const struct mg_request_info *ri, void *data)
+{
+	if (ri->permissions != PERM_ROOT && (ri->permissions&PERM_SMS_CONTACT)==0)
+		return;
+	lock_wakelock();
+	access_log(ri,"send sms");
+	char* post_data;
+	int post_data_len;
+	read_post_data(conn,ri,&post_data,&post_data_len);
+//	printf("sendsms\n");
+	send_ok(conn);
+	int n = 8;
+	int i = 0;
+	while (i<post_data_len && post_data[i] != 13 && post_data[i] != 10)
+	{
+		if (post_data[i] == ';')
+		{
+			post_data[i] = '\n';
+			break;
+		}
+		i++;
+	}
+	FILE* out;
+	out = fo("smsqueue","w");
+	fwrite(post_data,1,post_data_len,out);
+	fclose(out);
+	syst("/system/bin/am broadcast -a \"webkey.intent.action.SMS.SEND\" -n \"com.webkey/.SMS\"");
+	if (post_data)
+		delete[] post_data;
 }
 static void
 sendbroadcast(struct mg_connection *conn,
@@ -5116,7 +6162,285 @@ sendbroadcast(struct mg_connection *conn,
 		syst("/system/bin/am broadcast -a \"android.intent.action.BOOT_COMPLETED\" -n com.android.mms/.transaction.SmsReceiver&");
 	}
 }
+static void
+gpsset(struct mg_connection *conn,
+                const struct mg_request_info *ri, void *data)
+{
+	send_ok(conn);
+	if (ri->remote_ip==2130706433 && strcmp(ri->remote_user,"JAVA_CLIENT") == 0) //localhost
+	{
+		lock_wakelock();
+		int n = strlen(ri->uri)-7;
+		int i;
+//		printf("%s\n",ri->uri);
+		if (n<512)
+			for (i=n;i>=0;i--)
+				position_value[i] = ri->uri[i+7];
+		position_id++;
+	}
+}
+static void
+gpsget(struct mg_connection *conn,
+                const struct mg_request_info *ri, void *data)
+{
+	if (ri->permissions != PERM_ROOT && (ri->permissions&PERM_GPS)==0)
+		return;
+	lock_wakelock();
+	access_log(ri,"get gps position");
+	send_ok(conn);
+	FILE* in;
+	int last = ++position_id;
+	syst("/system/bin/am broadcast -a \"webkey.intent.action.GPS.START\" -n \"com.webkey/.GPS\"");
+	gps_active = true;
+	struct timeval tv;
+	gettimeofday(&tv,0);
+	last_gps_time = tv.tv_sec;
+	int i;
+	for (i=0; i<25;i++)
+	{
+		if (last != position_id)
+		{
+			mg_printf(conn,"%s",position_value);
+			break;
+		}
+		struct timespec tim;
+		tim.tv_sec = 0;
+		tim.tv_nsec = 200000000; //wait 200 ms
+		nanosleep(&tim,0);
+	}
+}
+//static void
+//uploadsms(struct mg_connection *conn,
+//               const struct mg_request_info *ri, void *data)
+//{
+//	send_ok(conn);
+//	if (ri->remote_ip==2130706433) //localhost
+//	{
+//		ri->post_data[ri->post_data_len-1] = 0;
+//		pthread_mutex_lock(&smsmutex);
+//		pthread_cond_broadcast(&smscond);
+//		sms = ri->post_data;
+//		pthread_mutex_unlock(&smsmutex);
+//	}
+//}
+//static void
+//uploadcontacts(struct mg_connection *conn,
+//                const struct mg_request_info *ri, void *data)
+//{
+//	send_ok(conn);
+//	if (ri->remote_ip==2130706433) //localhost
+//	{
+//		ri->post_data[ri->post_data_len-1] = 0;
+//		pthread_mutex_lock(&contactsmutex);
+//		pthread_cond_broadcast(&contactscond);
+//		contacts = ri->post_data;
+//		pthread_mutex_unlock(&contactsmutex);
+//	}
+//}
 
+static void
+smsxml(struct mg_connection *conn,
+                const struct mg_request_info *ri, void *data)
+{
+	if (ri->permissions != PERM_ROOT && (ri->permissions&PERM_SMS_CONTACT)==0)
+		return;
+	lock_wakelock();
+	access_log(ri,"read sms messages");
+	send_ok(conn,"Content-Type: text/xml; charset=UTF-8");
+	
+	std::string cmd = dir + "sqlite3 /data/data/com.android.providers.telephony/databases/mmssms.db 'select \"_id\",\"address\",\"person\",\"date\",\"read\",\"status\",\"type\",\"body\" from sms order by \"date\"'";
+//	printf("%s\n",cmd.c_str());
+	pthread_mutex_lock(&popenmutex);
+	fprintf(pipeout,"%s\n",cmd.c_str());
+	fflush(NULL);
+	char buff[LINESIZE];
+	char conv[LINESIZE];
+//	buff[255] = 0;
+	int pos[7];
+	int i;
+	int j;
+	mg_printf(conn,"<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<messages>\n");
+	bool first = true;
+	while (fgets(buff, LINESIZE-1, pipein) != NULL)
+	{
+		if (strcmp(buff,"!!!END_OF_POPEN!!!\n")==0)
+			break;
+		i = 0; j = 0;
+		while(buff[i])
+			if (buff[i++] == '|')
+				j++;
+		if (j<7)
+		{
+			mg_printf(conn,"%s",convertxml(conv, buff));
+			continue;
+		}
+		i = 0;
+		j = 0;
+		while(buff[i] && j < 7 && i < LINESIZE-1)
+		{
+			if (buff[i] == '|')
+			{
+				buff[i] = 0;
+				pos[j++] = i+1;
+			}
+			i++;
+		}
+		if (!first)
+			mg_printf(conn,"</body></sms>\n");
+		first = false;
+		mg_printf(conn,"<sms><id>%s</id><number>%s</number>",buff,convertxml(conv, buff+pos[0]));
+		if (buff[pos[1]])
+			mg_printf(conn,"<person>%s</person>",convertxml(conv, buff+pos[1]));
+		mg_printf(conn,"<date>%s</date><read>%s</read><status>%s</status><type>%s</type><body>%s",buff+pos[2],buff+pos[3],buff+pos[4],buff+pos[5],convertxml(conv, buff+pos[6]));
+	}
+	if (!first)
+		mg_printf(conn,"</body></sms>\n");
+	mg_printf(conn,"</messages>");
+	fflush(NULL);
+	pthread_mutex_unlock(&popenmutex);
+
+//	pthread_mutex_lock(&smsmutex);
+//	syst("/system/bin/am broadcast -a \"webkey.intent.action.SMS\"&");
+//	pthread_cond_wait(&smscond,&smsmutex);
+//	mg_write(conn,sms.c_str(),sms.length());
+//	pthread_mutex_unlock(&smsmutex);
+}
+static void
+contactsxml(struct mg_connection *conn,
+                const struct mg_request_info *ri, void *data)
+{
+	if (ri->permissions != PERM_ROOT && (ri->permissions&PERM_SMS_CONTACT)==0)
+		return;
+	lock_wakelock();
+	access_log(ri,"read contact data");
+	send_ok(conn,"Content-Type: text/xml; charset=UTF-8");
+
+	std::string cmd = dir + "sqlite3 /data/data/com.android.providers.contacts/databases/contacts2.db \'select \"raw_contact_id\",\"mimetype_id\",\"data1\" from data where \"data1\" <> \"\" order by \"raw_contact_id\"\'";
+
+	char buff[LINESIZE];
+	char last[LINESIZE];
+	char conv[LINESIZE];
+	last[0] = 0;
+	int pos[3];
+	int i;
+	int j;
+	mg_printf(conn,"<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<people>\n");
+	bool first = true;
+	for (i = 0; i < 32; i++)
+		if (mimetypes[i].length())
+			break;
+	int lastmime = -1;
+	pthread_mutex_lock(&popenmutex);
+	fprintf(pipeout,"%s\n",cmd.c_str());
+	fflush(NULL);
+	while (fgets(buff, LINESIZE-1, pipein) != NULL)
+	{
+		if (strcmp(buff,"!!!END_OF_POPEN!!!\n")==0)
+			break;
+		i = 0;
+		j = 0;
+		while(buff[i] && buff[i] != '\n' && j < 2 && i < 255)
+		{
+			if (buff[i] == '|')
+			{
+				buff[i] = 0;
+				pos[j++] = i+1;
+			}
+			i++;
+		}
+		if (j<2)
+		{
+			if (lastmime != -1)
+				mg_printf(conn,"\n%s",convertxml(conv, buff));
+			continue;
+		}
+		if (lastmime != -1)
+			mg_printf(conn,"</%s>",mimetypes[lastmime].c_str());
+		while(buff[i]) i++;
+		if (i)
+			buff[i-1] = 0;
+		if (strcmp(buff,last))
+		{
+			strcpy(last,buff);
+			if (first)
+				mg_printf(conn,"<contact><id>%s</id>",buff);
+			else
+				mg_printf(conn,"</contact>\n<contact><id>%s</id>",buff);
+			first = false;
+		}
+		int n = getnum(buff+pos[0]);
+		lastmime = n;
+		if (n > 0 && n < 32 && mimetypes[n].length() && buff[pos[1]])
+		{
+			mg_printf(conn,"<%s>%s",mimetypes[n].c_str(),convertxml(conv, buff+pos[1]));
+		}
+	}
+	if (lastmime != -1)
+		mg_printf(conn,"</%s>",mimetypes[lastmime].c_str());
+	if (first)
+		mg_printf(conn,"<contact><name>Empty list. Your phone might not be supported. On some newer and older phones the contact list is not in /data/data/com.android.providers.contacts/databases/contacts2.db</name><phone_v2>_</phone_v2></contact></people>");
+	else
+		mg_printf(conn,"</contact></people>");
+
+	fflush(NULL);
+	pthread_mutex_unlock(&popenmutex);
+
+//	pthread_mutex_lock(&contactsmutex);
+//	syst("/system/bin/am broadcast -a \"webkey.intent.action.CONTACTS\"&");
+//	pthread_cond_wait(&contactscond,&contactsmutex);
+//	mg_write(conn,contacts.c_str(),contacts.length());
+//	pthread_mutex_unlock(&contactsmutex);
+}
+static void
+callsxml(struct mg_connection *conn,
+                const struct mg_request_info *ri, void *data)
+{
+	if (ri->permissions != PERM_ROOT && (ri->permissions&PERM_SMS_CONTACT)==0)
+		return;
+	lock_wakelock();
+	access_log(ri,"read call log");
+	send_ok(conn,"Content-Type: text/xml; charset=UTF-8");
+
+	std::string cmd = dir + "sqlite3 /data/data/com.android.providers.contacts/databases/contacts2.db \'select \"_id\",\"number\",\"date\",\"duration\",\"type\",\"new\",\"name\",\"numbertype\" from calls order by \"_id\"\'";
+	pthread_mutex_lock(&popenmutex);
+	fprintf(pipeout,"%s\n",cmd.c_str());
+	fflush(NULL);
+
+
+	char buff[LINESIZE];
+	char conv[LINESIZE];
+	int pos[7];
+	int i;
+	int j;
+	mg_printf(conn,"<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<calls>\n");
+	bool first = true;
+	while (fgets(buff, 255, pipein) != NULL)
+	{
+		if (strcmp(buff,"!!!END_OF_POPEN!!!\n")==0)
+			break;
+		i = 0;
+		j = 0;
+		while(buff[i] && buff[i] != '\n' && j < 7 && i < 255)
+		{
+			if (buff[i] == '|')
+			{
+				buff[i] = 0;
+				pos[j++] = i+1;
+			}
+			i++;
+		}
+		if (j<7)
+			continue;
+		while(buff[i]) i++;
+		if (i)
+			buff[i-1] = 0;
+		if (i-1 && buff[i-2] == 13)
+			buff[i-2] = 0;
+		mg_printf(conn,"<call><id>%s</id><number>%s</number><date>%s</date><duration>%s</duration><type>%s</type><new>%s</new><name>%s</name><numbertype>%s</numbertype></call>\n",buff,buff+pos[0],buff+pos[1],buff+pos[2],buff+pos[3],buff+pos[4],convertxml(conv,buff+pos[5]),buff+pos[6]);
+	}
+	mg_printf(conn,"</calls>");
+	pthread_mutex_unlock(&popenmutex);
+}
 static void
 intent(struct mg_connection *conn,
                 const struct mg_request_info *ri, void *data)
@@ -5124,6 +6448,7 @@ intent(struct mg_connection *conn,
 	if (ri->permissions != PERM_ROOT)
 		return;
 	lock_wakelock();
+	access_log(ri,"start intent");
 	send_ok(conn);
 	int n = 7;
 	std::string call = "/system/bin/am start ";
@@ -5143,14 +6468,451 @@ intent(struct mg_connection *conn,
 			call += ch;
 		}
 	}
+//	printf("%s\n",ri->uri+8);
+//	printf("%s\n",call.c_str());
+		
 	syst(call.c_str());
 }
+static void
+exports(struct mg_connection *conn,
+                const struct mg_request_info *ri, void *data)
+{
+	if (ri->permissions != PERM_ROOT && (ri->permissions&PERM_SMS_CONTACT)==0)
+		return;
+	lock_wakelock();
+	access_log(ri,"export data");
+	char buff[LINESIZE];
+	char last[LINESIZE];
+	char conv[LINESIZE];
+	int cols;
+	std::string cmd;
+	std::string header;
+	int datepos=-1;
+	int type;
+	bool winnewline = false;
+	if (ri->uri[8] == '0')
+	{
+		cmd = dir + "sqlite3 /data/data/com.android.providers.contacts/databases/contacts2.db \'select \"raw_contact_id\",\"mimetype_id\",\"data1\" from data where \"data1\" <> \"\" order by \"raw_contact_id\"\'";
+		cols = 3-1;
+		header = "contacts";
+		type = 0;
+	}
+	if (ri->uri[8] == '1')
+	{
+		cmd = dir + "sqlite3 /data/data/com.android.providers.telephony/databases/mmssms.db 'select \"_id\",\"address\",\"person\",\"date\",\"read\",\"status\",\"type\",\"body\" from sms order by \"date\"'";
+		cols = 8-1;
+		header = "messages";
+		datepos = 3;
+		type = 1;
+	}
+	if (ri->uri[8] == '2')
+	{
+		cmd = dir + "sqlite3 /data/data/com.android.providers.contacts/databases/contacts2.db \'select \"_id\",\"number\",\"date\",\"duration\",\"type\",\"new\",\"name\",\"numbertype\" from calls order by \"_id\"\'";
+		cols = 8-1;
+		header = "call_list";
+		datepos = 2;
+		type = 2;
+	}
+	int format = ri->uri[9]-48;
+	int dateformat = ri->uri[10]-48;
+	int datesep = ri->uri[11]-48;
+	int datein = ri->uri[12]-48;
+	if (ri->uri[13] == '1')
+		winnewline = true;
+	int datetimezone = (ri->uri[14]-48)*10+ri->uri[15]-48-10-12;
+	if (format < 0 || format > 2 || dateformat < 0 || dateformat > 2 || datesep < 0 || datesep > 2 || datein < 0 || datein > 1 || datetimezone < -12 || datetimezone > 12)
+		return;
+	switch(format)
+	{
+		case 0: header = std::string()+"Content-Type: text/plain; charset=UTF-8\r\nContent-Disposition: attachment;filename="+header+".txt"; break;
+		case 1: header = std::string()+"Content-Type: text/csv; charset=UTF-8\r\nContent-Disposition: attachment;filename="+header+".csv"; break;
+		case 2: header = std::string()+"Content-Type: text/xml; charset=UTF-8\r\nContent-Disposition: attachment;filename="+header+".xml"; break;
+	}
+	send_ok(conn,header.c_str());
+//	fflush(NULL);
+//	if ((in = popen(cmd.c_str(),"r")) == NULL)
+//	in = mypopen("/data/data/com.webkey/files/sqlite3 /data/data/com.android.providers.contacts/databases/contacts2.db \'select \"raw_contact_id\",\"mimetype_id\",\"data1\" from data where \"data1\" <> \"\" order by \"raw_contact_id\"\'","r");
+	int pos[16];
+	int i;
+	int j;
+	int n;
+	std::string mimedata[32];
+	int maxmime = 0;
+	switch(type)
+	{
+		case 0: 
+			for (i = 0; i < 32; i++)
+				if (mimetypes[i].length())
+					break;
+			for (maxmime = 31; maxmime >= 0; maxmime--)
+				if (mimetypes[maxmime].length())
+					break;
+			maxmime++;
 
+			switch(format)
+			{
+				case 0: 
+					mg_printf(conn,"Contacts:");
+					break;
+				case 1:
+					mg_printf(conn,"id;");
+					for (i = 1; i < maxmime; i++)
+						if (mimetypes[i].length())
+							mg_printf(conn,"%s;",mimetypes[i].c_str());
+					if (winnewline)
+						mg_printf(conn,"\r\n");
+					else
+						mg_printf(conn,"\n");
+					break;
+				case 2:
+					if (winnewline)
+						mg_printf(conn,"<?xml version=\"1.0\" encoding=\"utf-8\"?>\r\n<people>\r\n");
+					else
+						mg_printf(conn,"<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<people>\n");
+					break;
+			}
+			break;
+		case 1: 
+			switch(format)
+			{
+				case 0: 
+					mg_printf(conn,"Messages:");
+					break;
+				case 1:
+					mg_printf(conn,"id;address;person;date;read;status;type;body");
+					break;
+				case 2:
+					if (winnewline)
+						mg_printf(conn,"<?xml version=\"1.0\" encoding=\"utf-8\"?>\r\n<messages>\r\n");
+					else
+						mg_printf(conn,"<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<messages>\n");
+					break;
+			}
+			break;
+		case 2: 
+			switch(format)
+			{
+				case 0: 
+					if (winnewline)
+						mg_printf(conn,"Calls:\r\n\r\n");
+					else
+						mg_printf(conn,"Calls:\n\n");
+					break;
+				case 1:
+					mg_printf(conn,"id;number;date;duration;type;new;name;numbertype");
+					break;
+				case 2:
+					if (winnewline)
+						mg_printf(conn,"<?xml version=\"1.0\" encoding=\"utf-8\"?>\r\n<calls>\r\n");
+					else
+						mg_printf(conn,"<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<calls>\n");
+					break;
+			}
+			break;
+	}
+	bool first = true;
+	int lastmime = -1;
+	pthread_mutex_lock(&popenmutex);
+	fprintf(pipeout,"%s\n",cmd.c_str());
+	fflush(NULL);
+	while (fgets(buff, LINESIZE-1, pipein) != NULL)
+	{
+		if (strcmp(buff,"!!!END_OF_POPEN!!!\n")==0)
+		{
+			break;
+		}
+		i = 0;
+		j = 0;
+		while(buff[i] && buff[i] != '\n' && j < cols && i < LINESIZE)
+		{
+			if (buff[i] == '|')
+			{
+				buff[i] = 0;
+				pos[j++] = i+1;
+			}
+			i++;
+		}
+		while(buff[i]) i++;
+		if (i)
+			buff[i-1] = 0;
+		if (j<cols)
+		{
+			switch(format)
+			{
+				case 0:
+					if (winnewline)
+						mg_printf(conn,"\r\n%s",buff);
+					else
+						mg_printf(conn,"\n%s",buff);
+					break;
+				case 1:
+					if (type == 0)
+					{
+						if (lastmime != -1)
+							mimedata[lastmime] = mimedata[lastmime] + removesemicolon(conv,buff);
+					}
+					else
+						mg_printf(conn," %s",removesemicolon(conv,buff));
+					break;
+				case 2:
+					if (winnewline)
+						mg_printf(conn,"\r\n%s",convertxml(conv,buff));
+					else
+						mg_printf(conn,"\n%s",convertxml(conv,buff));
+					break;
+			}
+			continue;
+		}
+		bool newid = false;
+		switch(type)
+		{
+			case 0: 
+				if (strcmp(buff,last))
+				{
+					if (!first && format==1)
+					{
+						mg_printf(conn,"%s;",last);
+						for (i = 1; i < maxmime; i++)
+							mg_printf(conn,"%s;",removesemicolon(conv,mimedata[i].c_str()));
+						if (winnewline)
+							mg_printf(conn,"\r\n");
+						else
+							mg_printf(conn,"\n");
+					}
+					strcpy(last,buff);
+					newid = true;
+					for (i = 0; i < 32; i++)
+						mimedata[i] = "";
+				}
+				switch(format)
+				{
+					case 0: 
+						if (newid)
+						{
+							if (winnewline)
+								mg_printf(conn,"\r\n\r\n%s\r\n",buff);
+							else
+								mg_printf(conn,"\n\n%s\n",buff);
+						}
+						n = getnum(buff+pos[0]);
+						if (n>0 && n < 32)
+						{
+							if (winnewline)
+								mg_printf(conn,"%s: %s\r\n",mimetypes[n].c_str(),buff+pos[1]);
+							else
+								mg_printf(conn,"%s: %s\n",mimetypes[n].c_str(),buff+pos[1]);
+							lastmime = n;
+						}
+						break;
+					case 1:
+						n = getnum(buff+pos[0]);
+						if (n>0 && n < 32)
+						{
+							if (mimedata[n].length())
+								mimedata[n] = mimedata[n] + ", " + (buff+pos[1]);
+							else
+								mimedata[n] = buff+pos[1];
+						}
+						break;
+					case 2:
+						if (lastmime != -1)
+							mg_printf(conn,"</%s>",mimetypes[lastmime].c_str());
+						if (first)
+							mg_printf(conn,"<contact><id>%s</id>",buff);
+						else if(newid)
+						{
+							if (winnewline)
+								mg_printf(conn,"</contact>\r\n<contact><id>%s</id>",buff);
+							else
+								mg_printf(conn,"</contact>\n<contact><id>%s</id>",buff);
+						}
+						int n = getnum(buff+pos[0]);
+						lastmime = n;
+						if (n > 0 && n < 32 && mimetypes[n].length() && buff[pos[1]])
+						{
+							mg_printf(conn,"<%s>%s",mimetypes[n].c_str(),convertxml(conv, buff+pos[1]));
+						}
+						break;
+				}
+				break;
+			case 1: 
+				if (pos[3]>pos[2]+4)
+					buff[pos[3]-4]=0;
+				switch(format)
+				{
+					case 0: 
+						if (winnewline)
+							mg_printf(conn,"\r\n\r\n");
+						else
+							mg_printf(conn,"\n\n");
+						mg_printf(conn,"%s. %s (%s), ",buff,buff+pos[1],buff+pos[0]);
+						if (buff[pos[5]] == '1')
+							mg_printf(conn,"in, ");
+						else 
+						if (buff[pos[5]] == '2')
+							mg_printf(conn,"out, ");
+						mg_printf(conn,humandate(conv,getnum(buff+pos[2]),dateformat,datesep,datein,datetimezone));
+						if (winnewline)
+							mg_printf(conn,":\r\n");
+						else
+							mg_printf(conn,":\n");
+						mg_printf(conn,"%s",buff+pos[6]);
+						break;
+					case 1:
+						if (winnewline)
+							mg_printf(conn,"\r\n");
+						else
+							mg_printf(conn,"\n");
+						mg_printf(conn,"%s;%s;%s;%s;%s;%s;%s",buff,buff+pos[0],buff+pos[1],humandate(conv,getnum(buff+pos[2]),dateformat,datesep,datein,datetimezone),buff+pos[3],buff+pos[4],buff+pos[5]);
+						mg_printf(conn,";%s",removesemicolon(conv,buff+pos[6]));
+						break;
+					case 2:
+						if (!first)
+						{
+							if (winnewline)
+								mg_printf(conn,"</body></sms>\r\n");
+							else
+								mg_printf(conn,"</body></sms>\n");
+						}
+						mg_printf(conn,"<sms><id>%s</id><address>%s</address><person>%s</person><date>%s</date><read>%s</read><status>%s</status><type>%s</type><body>%s",buff,buff+pos[0],buff+pos[1],buff+pos[2],buff+pos[3],buff+pos[4],buff+pos[5],convertxml(conv,buff+pos[6]));
+						break;
+				}
+				break;
+			case 2: 
+				if (pos[2]>pos[1]+4)
+					buff[pos[2]-4]=0;
+				switch(format)
+				{
+					case 0: 
+						if (winnewline)
+							mg_printf(conn,"\r\n\r\n");
+						else
+							mg_printf(conn,"\n\n");
+						mg_printf(conn,"%s. %s (%s), ",buff,buff+pos[5],buff+pos[0]);
+						if (buff[pos[3]] == '1')
+							mg_printf(conn,"in, ");
+						else 
+						if (buff[pos[3]] == '2')
+							mg_printf(conn,"out, ");
+						else 
+						if (buff[pos[3]] == '3')
+							mg_printf(conn,"rejected, ");
+						mg_printf(conn,humandate(conv,getnum(buff+pos[1]),dateformat,datesep,datein,datetimezone));
+						mg_printf(conn,", ");
+						mg_printf(conn,humandur(conv,getnum(buff+pos[2])));
+						if (winnewline)
+							mg_printf(conn,"\r\n");
+						else
+							mg_printf(conn,"\n");
+						break;
+					case 1:
+						if (winnewline)
+							mg_printf(conn,"\r\n");
+						else
+							mg_printf(conn,"\n");
+						mg_printf(conn,"%s;%s;%s;%s;%s;%s;%s;%s",buff,buff+pos[0],humandate(conv,getnum(buff+pos[1]),dateformat,datesep,datein,datetimezone),buff+pos[2],buff+pos[3],buff+pos[4],buff+pos[5],buff+pos[6]);
+						break;
+					case 2:
+						if (winnewline)
+							mg_printf(conn,"<call><id>%s</id><number>%s</number><date>%s</date><duration>%s</duration><type>%s</type><new>%s</new><name>%s</name><numbertype>%s</numbertype></call>\r\n",buff,buff+pos[0],buff+pos[1],buff+pos[2],buff+pos[3],buff+pos[4],convertxml(conv,buff+pos[5]),buff+pos[6]);
+						else
+							mg_printf(conn,"<call><id>%s</id><number>%s</number><date>%s</date><duration>%s</duration><type>%s</type><new>%s</new><name>%s</name><numbertype>%s</numbertype></call>\n",buff,buff+pos[0],buff+pos[1],buff+pos[2],buff+pos[3],buff+pos[4],convertxml(conv,buff+pos[5]),buff+pos[6]);
+						break;
+				}
+				break;
+		}
+//		int n = getnum(buff+pos[0]);
+//		lastmime = n;
+//		if (n > 0 && n < 32 && mimetypes[n].length() && buff[pos[1]])
+//		{
+//			mg_printf(conn,"<%s>%s",mimetypes[n].c_str(),convertxml(conv, buff+pos[1]));
+//		}
+		first = false;
+	}
+//	if (lastmime != -1)
+//		mg_printf(conn,"</%s>",mimetypes[lastmime].c_str());
+//	if (first)
+//		mg_printf(conn,"</people>");
+//	else
+//		mg_printf(conn,"</contact></people>");
+	
+	pthread_mutex_unlock(&popenmutex);
+
+	switch(type)
+	{
+		case 0: 
+			switch(format)
+			{
+				case 0: 
+					break;
+				case 1:
+					if (!first)
+					{
+						mg_printf(conn,"%s;",last);
+						for (i = 0; i < maxmime; i++)
+							mg_printf(conn,"%s;",mimedata[i].c_str());
+						if (winnewline)
+							mg_printf(conn,"\r\n");
+						else
+							mg_printf(conn,"\n");
+					}
+					break;
+				case 2:
+					if (lastmime != -1)
+						mg_printf(conn,"</%s></contact>",mimetypes[lastmime].c_str());
+					mg_printf(conn,"</people>");
+					break;
+			}
+			break;
+		case 1: 
+			switch(format)
+			{
+				case 0: 
+					break;
+				case 1:
+					break;
+				case 2:
+					if (!first)
+					{
+						if (winnewline)
+							mg_printf(conn,"</body></sms>\r\n");
+						else
+							mg_printf(conn,"</body></sms>\n");
+					}
+					mg_printf(conn,"</messages>");
+					break;
+			}
+			break;
+		case 2: 
+			switch(format)
+			{
+				case 0: 
+					break;
+				case 1:
+					break;
+				case 2:
+					mg_printf(conn,"</calls>");
+					break;
+			}
+			break;
+	}
+	
+
+//	pthread_mutex_lock(&contactsmutex);
+//	syst("/system/bin/am broadcast -a \"webkey.intent.action.CONTACTS\"&");
+//	pthread_cond_wait(&contactscond,&contactsmutex);
+//	mg_write(conn,contacts.c_str(),contacts.length());
+//	pthread_mutex_unlock(&contactsmutex);
+}
 static void
 password(struct mg_connection *conn,
                 const struct mg_request_info *ri, void *data)
 {
 	send_ok(conn);
+//	if (ri->remote_ip==2130706433 && exit_flag == 0) //localhost
+//	{
+//		mg_printf(conn,admin_password.c_str());
+//	}
 }
 
 static std::string update_dyndns(__u32 ip)
@@ -5208,8 +6970,8 @@ static std::string update_dyndns(__u32 ip)
 		dyndns_last_updated_ip = ip;
 		return "update's ok, dyndns answered: "+ans;
 	}
-	if (contains(ans.c_str(),"badauth") || contains(ans.c_str(),"!donator") || contains(ans.c_str(),"notfqdn")
-			|| contains(ans.c_str(),"nohost") || contains(ans.c_str(),"numhost")
+	if (contains(ans.c_str(),"badauth") || contains(ans.c_str(),"!donator") || contains(ans.c_str(),"notfqdn") 
+			|| contains(ans.c_str(),"nohost") || contains(ans.c_str(),"numhost") 
 			|| contains(ans.c_str(),"abuse") || contains(ans.c_str(),"badagent"))
 	{
 		dyndns = false;
@@ -5264,7 +7026,7 @@ static __u32 ipaddress()
 			close(s);
 			return 0;
 		}
-		if ((c.ifr_flags & IFF_UP) && ((c.ifr_flags & IFF_LOOPBACK) == 0))
+		if ((c.ifr_flags & IFF_UP) && ((c.ifr_flags & IFF_LOOPBACK) == 0)) 
 		{
 			__u32 t = ((struct sockaddr_in *)&r->ifr_addr)->sin_addr.s_addr;
 			if ((t&255) == 192 && ((t>>8)&255) == 168)
@@ -5371,7 +7133,7 @@ uptime(struct mg_connection *conn,
 		}
 	}
 	if (f)
-		fclose(f);
+		fclose(f);			
 }
 
 static void
@@ -5443,10 +7205,36 @@ netinfo(struct mg_connection *conn,
 }
 
 static void
+brightness(struct mg_connection *conn,
+                const struct mg_request_info *ri, void *data)
+{
+	send_ok(conn);
+	if (ri->permissions != PERM_ROOT)
+		return;
+	lock_wakelock();
+	int fd = open("/sys/class/leds/lcd-backlight/brightness", O_RDONLY);
+	if (fd < 0)
+		fd = open("/sys/class/backlight/pwm-backlight/brightness", O_RDONLY);
+	char value[20];
+	int n;
+	if (fd >= 0)
+	{
+		n = read(fd, value, 10);
+		if (n)
+			mg_printf(conn,"%s: %d%%, ",lang(ri,"Brightness").c_str(),100*getnum(value)/max_brightness);
+		close(fd);
+	}
+}
+static void
 status(struct mg_connection *conn,
                 const struct mg_request_info *ri, void *data)
 {
 	send_ok(conn);
+//test
+//        if (ioctl(fbfd, FBIOGET_VSCREENINFO, &scrinfo) != 0)
+//		return;
+//	mg_printf(conn,"%d\n",scrinfo.yoffset);
+
 	if (ri->permissions != PERM_ROOT)
 		return;
 	lock_wakelock();
@@ -5498,7 +7286,7 @@ status(struct mg_connection *conn,
 		}
 	}
 	if (f)
-		fclose(f);
+		fclose(f);			
 	if (f = fopen("/proc/meminfo","r"))
 	{
 		char name[100];
@@ -5545,7 +7333,7 @@ status(struct mg_connection *conn,
 		}
 		fclose(f);
 	}
-
+	
 	int fd = open("/sys/class/leds/lcd-backlight/brightness", O_RDONLY);
 	if (fd < 0)
 		fd = open("/sys/class/backlight/pwm-backlight/brightness", O_RDONLY);
@@ -5558,6 +7346,35 @@ status(struct mg_connection *conn,
 			mg_printf(conn,"%s: %d%%, ",lang(ri,"Brightness").c_str(),100*getnum(value)/max_brightness);
 		close(fd);
 	}
+	if (recording)
+	{
+		mg_printf(conn,"<span style=\"color: red\">%s %d ",lang(ri,"Recorded").c_str(),recordingnum);
+		mg_printf(conn,"%s</span>, ",lang(ri,"images").c_str());
+	}
+}
+static void
+sdcard(struct mg_connection *conn,
+                const struct mg_request_info *ri, void *data)
+{
+	if (ri->permissions != PERM_ROOT && (ri->permissions&PERM_SDCARD)==0)
+		return;
+	lock_wakelock();
+	access_log(ri,"browse sdcard");
+	send_ok(conn,"Content-Type: text/html; charset=UTF-8\r\nSet-Cookie: path=/");
+	FILE* f = fo("sdcard.html","rb");
+	if (!f)
+		return;
+	fseek (f , 0 , SEEK_END);
+	int lSize = ftell (f);
+	rewind (f);
+	char* filebuffer = new char[lSize+1];
+	if (!filebuffer)
+		return;
+	fread(filebuffer,1,lSize,f);
+	filebuffer[lSize] = 0;
+	mg_write(conn,filebuffer,lSize);
+	fclose(f);
+	delete[] filebuffer;
 }
 
 int remove_directory(const char *path)
@@ -5608,6 +7425,7 @@ upload(struct mg_connection *conn,
 	if (ri->permissions != PERM_ROOT)
 		return;
 	lock_wakelock();
+	access_log(ri,"upload");
 	char* post_data;
 	int post_data_len = contentlen(conn);
 	int read = 0;
@@ -5668,9 +7486,12 @@ content(struct mg_connection *conn,
 	if (ri->permissions != PERM_ROOT && (ri->permissions&PERM_SDCARD)==0)
 		return;
 	lock_wakelock();
+	access_log(ri,"browse sdcard");
 	char* post_data;
 	int post_data_len;
 	read_post_data(conn,ri,&post_data,&post_data_len);
+//	printf("request: %s\n",ri->query_string);
+	//save edited file
 	if (ri->query_string == NULL && post_data_len && startswith(post_data,"get_action=put_content"))
 	{
 		std::string file = getoption(post_data,"file=");
@@ -5709,42 +7530,53 @@ content(struct mg_connection *conn,
 			!strncasecmp("multipart/form-data", ri->http_headers[i].value,19))
 			break;
 	}
+//	printf("%d\n",__LINE__);
 	if (i < ri->num_headers) //non-html5 upload
 	{
+//		printf("%d\n",__LINE__);
 		i = 0;
 		while (i < post_data_len && post_data[i] != '\r') i++;
 		if (i>=post_data_len) {if (post_data) delete[] post_data; return;}
 		post_data[i] = 0;
 		std::string boundary = std::string("\r\n") + std::string(post_data);
 		i+=2;
+//		printf("%d\n",__LINE__);
 		if (i>=post_data_len) {if (post_data) delete[] post_data; return;}
+//		printf("%s\n",post_data+i);
 		if (strncasecmp("Content-Disposition: form-data; name=\"userfile_",post_data+i,47))
 			{if (post_data) delete[] post_data; return;}
 		i += 47;
+//		printf("%d\n",__LINE__);
 		while (i < post_data_len && post_data[i] != '_') i++;
-		i++;
+		i++; 
 		if (i>=post_data_len) {if (post_data) delete[] post_data; return;}
 		int start = i;
 		while (i < post_data_len && post_data[i] != '"') i++;
 		if (i>=post_data_len) {if (post_data) delete[] post_data; return;}
 		post_data[i] = 0;
+//		printf("%d\n",__LINE__);
 		url_decode(post_data+start, strlen(post_data+start), post_data+start, FILENAME_MAX, true);
 		std::string dir = post_data+start;
+//		printf("dir = %s\n",dir.c_str());
 		while (i < post_data_len-4 && strncmp(post_data+i,"filename=\"",10)) i++;
 		i += 10;
 		start = i;
 		while (i < post_data_len-4 && post_data[i] != '"') i++;
 		if (i>=post_data_len) {if (post_data) delete[] post_data; return;}
+//		printf("%d\n",__LINE__);
 		post_data[i] = 0;
 		std::string filename = post_data+start;
+//		printf("filename = %s\n",filename.c_str());
 		while (i < post_data_len-4 && strncmp(post_data+i,"\r\n\r\n",4)) i++;
 		i+=4;
 		if (i>=post_data_len) {if (post_data) delete[] post_data; return;}
 		start = i;
+//		printf("%d\n",__LINE__);
 		send_ok(conn);
 		FILE * f = fopen((dir+"/"+filename).c_str(),"w");
 		if (!f)
 		{
+//		printf("%d\n",__LINE__);
 			mg_printf(conn,"<html><script language=\"javascript\">if(parent.ajaxplorer.actionBar.multi_selector) parent.ajaxplorer.actionBar.multi_selector.submitNext('Error opening file for writing');</script></html>\n");
 			if (post_data)
 				delete[] post_data;
@@ -5755,6 +7587,8 @@ content(struct mg_connection *conn,
 		while(post_data_len == 65536)
 		{
 			int s = fwrite(post_data+start,1,65536-500-start,f);
+//			printf("s = %d\n",s);
+//			printf("start = %d\n",start);
 			if(s < 65536-500-start)
 				{
 					mg_printf(conn,"<html><script language=\"javascript\">if(parent.ajaxplorer.actionBar.multi_selector) parent.ajaxplorer.actionBar.multi_selector.submitNext('Error writing. Is disk full?');</script></html>\n");
@@ -5772,6 +7606,7 @@ content(struct mg_connection *conn,
 			post_data_len = mg_read(conn,post_data+500,l) + 500;
 			post_data[post_data_len] = 0;
 			already_read += post_data_len - 500;
+//			printf("post_data_len = %d\n",post_data_len);
 		}
 		i=0;
 		while (i < post_data_len && strncmp(post_data+i,boundary.c_str(),boundary.size())) i++;
@@ -5804,10 +7639,11 @@ content(struct mg_connection *conn,
 	if (startswith(ri->query_string,"get_action=save_user_pref")
 	|| startswith(ri->query_string,"get_action=switch_repository"))
 	{
+		sdcard(conn,ri,data);
 		return;
 	}
 	std::string action = getoption(ri->query_string,"action=");
-
+	
 	if (action == "get_boot_conf")
 	{
 		send_ok(conn,"Content-Type: text/javascript; charset=UTF-8");
@@ -5830,7 +7666,14 @@ content(struct mg_connection *conn,
 			mg_write(conn,filebuffer,lSize);
 			fclose(f);
 			delete[] filebuffer;
+//			int q;
+//			for (q = 0; q < 32; q++)
+//			{
+//				upload_random[q] = (char)(rand()%10+48);
+//			}
+//			mg_write(conn,upload_random,32);
 			f = NULL;
+//			f =  fo("ae_get_template2","rb");
 		}
 	}
 	if (action == "get_xml_registry")
@@ -5855,17 +7698,30 @@ content(struct mg_connection *conn,
 	}
 	if (action == "ls")
 	{
+//		printf("%s\n",ri->query_string);
 		send_ok(conn,"Content-Type: text/xml; charset=UTF-8");
 		std::string dp = getoption(ri->query_string,"dir=");
 		char dirpath[FILENAME_MAX];
+//		if (getoption(ri->query_string,"playlist=") == "true")
+//		{
+//			dp = base64_decode(dp);
+//			strcpy(dirpath, dp.c_str());
+//		}
+//		else
+//		{
 			strcpy(dirpath, dp.c_str());
 			url_decode(dirpath, strlen(dirpath), dirpath, FILENAME_MAX, true);
+//		}
+//		printf("%s\n",dirpath);
 		if (!startswith(dirpath,"/sdcard"))
 		{
 			(void) mg_printf(conn, "<?xml version=\"1.0\" encoding=\"UTF-8\"?><tree filename=\"\" text=\"\" is_file=\"false\"><tree is_file=\"false\" filename=\"/sdcard\" text=\"sdcard\" icon=\"folder.png\" mimestring=\"Directory\" is_image=\"0\"/></tree>");
 			return;
 		}
+//			strcpy(dirpath,"/sdcard");
 		remove_double_dots_and_double_slashes(dirpath);
+//		printf("%s\n",dirpath);
+
 		my_send_directory(conn,dirpath);
 	}
 	if (action == "download"
@@ -5874,6 +7730,7 @@ content(struct mg_connection *conn,
 	 || action == "get_content"
 	 || action == "open_with")
 	{
+//		printf("%s\n",ri->query_string);
 		std::string fp = getoption(ri->query_string,"file=");
 		if (action == "audio_proxy")
 			fp = base64_decode(fp);
@@ -5887,9 +7744,12 @@ content(struct mg_connection *conn,
 		for (i = strlen(filepath)-1; i>=0; i--)
 			if (filepath[i]=='/')
 				break;
+//		printf("%s\n",filepath);
+//		printf("%s\n",filepath+i+1);
 		if (action=="preview_data_proxy")
 		{
 			mg_printf(conn,"HTTP/1.1 200 OK\r\nCache-Control: no-store, no-cache, must-revalidate\r\nCache-Control: post-check=0, pre-check=0\r\nPragma: no-cache\r\nContent-Type: image/jpg; name=\"%s\"\r\nConnection: close\r\n\r\n",filepath+i+1);
+//			printf("OK\n");
 		}
 		if (action == "open_with" || action == "get_content")
 		{
@@ -5988,7 +7848,7 @@ content(struct mg_connection *conn,
 		std::string file = getoption(ri->query_string,"dir=") + "/" + getoption(ri->query_string,"filename=");
 		if (!startswith(file.c_str(),"%2Fsdcard"))
 			file = "/sdcard/"+file;
-
+		
 		char filepath[FILENAME_MAX];
 		strcpy(filepath, file.c_str());
 		url_decode(filepath, strlen(filepath), filepath, FILENAME_MAX, true);
@@ -6064,6 +7924,8 @@ content(struct mg_connection *conn,
 				  }
 				  else
 					  ok++; //opera bug
+				//if (remove(filepath) == 0)
+				//	system((std::string("rm -rf \"")+std::string(filepath)+std::string("\"")).c_str());
 			}
 			if (move)
 			{
@@ -6084,9 +7946,12 @@ content(struct mg_connection *conn,
 				to[j++] = 0;
 				if (!rename(filepath, to))
 					ok++;
+//				else
+//					printf("AAAAAAAA %s - %s\n",filepath,to);
 			}
 			if (copy)
 			{
+//				printf("COPY\n");
 				strcpy(to,dest.c_str());
 				url_decode(to, strlen(to), to, FILENAME_MAX, true);
 				remove_double_dots_and_double_slashes(to);
@@ -6111,6 +7976,7 @@ content(struct mg_connection *conn,
 					{
 						while(j = fread(buff, 1, 65536, in))
 						{
+//							printf("%s - %s %d\n",filepath,to,j);
 							fwrite(buff, 1, j, out);
 						}
 						fclose(out);
@@ -6119,6 +7985,7 @@ content(struct mg_connection *conn,
 					fclose(in);
 				}
 			}
+//			printf("%d\n",i);
 			i++;
 		}
 		char d[FILENAME_MAX];
@@ -6188,6 +8055,103 @@ content(struct mg_connection *conn,
 	}
 	if (action == "upload")
 	{
+		//<html><script language="javascript">
+		//
+		// if(parent.ajaxplorer.actionBar.multi_selector) parent.ajaxplorer.actionBar.multi_selector.submitNext();</script></html>
+		
+
+		//send_ok(conn);
+/*		mg_printf(conn,"HTTP/1.1 100 Continue\r\n\r\n");
+//		printf("%s\n",ri->post_data);
+		int i = 0;
+		while(i < post_data_len && post_data[i]!='\n') i++; i++;
+		while(i < post_data_len && post_data[i]!='\n') i++; i++;
+		while(i < post_data_len && post_data[i]!='\n') i++; i++;
+		int start = i;
+		while(i < post_data_len && post_data[i]!='\r') i++;
+		if (i >= post_data_len)
+		{
+			mg_printf(conn,"<?xml version=\"1.0\" encoding=\"UTF-8\"?><tree><message type=\"ERROR\">Upload failed.</message><reload_instruction object=\"data\" node=\"\"/></tree>");
+			return;
+		}
+		post_data[i] = 0;
+		std::string file = (post_data + start);
+		i+=2;
+		while(i < post_data_len && post_data[i]!='\n') i++; i++;
+		while(i < post_data_len && post_data[i]!='\n') i++; i++;
+		while(i < post_data_len && post_data[i]!='\n') i++; i++;
+		start = i;
+		while(i < post_data_len && post_data[i]!='\r') i++;
+		if (i >= post_data_len)
+		{
+			mg_printf(conn,"<?xml version=\"1.0\" encoding=\"UTF-8\"?><tree><message type=\"ERROR\">Upload failed.</message><reload_instruction object=\"data\" node=\"\"/></tree>");
+			return;
+		}
+		post_data[i] = 0;
+		std::string dir = base64_decode(post_data + start);
+		i+=2;
+		if (!startswith(dir.c_str(),"/sdcard"))
+			dir = "/sdcard/"+dir;
+		file = dir+'/'+file;
+		char filepath[FILENAME_MAX];
+		if (file.size() >= FILENAME_MAX-1)
+		{
+			mg_printf(conn,"<?xml version=\"1.0\" encoding=\"UTF-8\"?><tree><message type=\"ERROR\">Upload failed.</message><reload_instruction object=\"data\" node=\"\"/></tree>");
+			return;
+		}
+		strcpy(filepath,file.c_str());
+		remove_double_dots_and_double_slashes(filepath);
+//		printf("path = %s\n",filepath);
+		while(i < post_data_len && post_data[i]!='\n') i++; i++;
+		while(i < post_data_len && post_data[i]!='\n') i++; i++;
+		while(i < post_data_len && post_data[i]!='\n') i++; i++;
+		while(i < post_data_len && post_data[i]!='\n') i++; i++;
+		if (i >= post_data_len)
+		{
+			mg_printf(conn,"<?xml version=\"1.0\" encoding=\"UTF-8\"?><tree><message type=\"ERROR\">Upload failed.</message><reload_instruction object=\"data\" node=\"\"/></tree>");
+			return;
+		}
+		start = i;
+		FILE* f = fopen(filepath,"w");
+		if (!f)
+		{
+			mg_printf(conn,"<?xml version=\"1.0\" encoding=\"UTF-8\"?><tree><message type=\"ERROR\">Upload failed.</message><reload_instruction object=\"data\" node=\"\"/></tree>");
+			return;
+		}
+
+
+		int already_read = 65536;
+		while(post_data_len == 65536)
+		{
+			fwrite(post_data+start,1,65536-500-start,f);
+			start = 0;
+			int l = contentlen(conn) - already_read;
+
+			if (l > 65536-500)
+				l = 65536-500;
+			memcpy(post_data,post_data+65536-500,500);
+			post_data_len = mg_read(conn,post_data+500,l) + 500;
+			post_data[post_data_len] = 0;
+			already_read += post_data_len - 500;
+		}
+
+		i = post_data_len-1;
+		while(i >= 0 && post_data[i]!='\n') i--; i--;
+		while(i >= 0 && post_data[i]!='\n') i--; i--;
+		while(i >= 0 && post_data[i]!='\n') i--; i--;
+		while(i >= 0 && post_data[i]!='\n') i--; i--;
+		while(i >= 0 && post_data[i]!='\n') i--; i--;
+		while(i >= 0 && post_data[i]!='\n') i--; i--;
+		if (i < start)
+		{
+			mg_printf(conn,"<?xml version=\"1.0\" encoding=\"UTF-8\"?><tree><message type=\"ERROR\">Upload failed.</message><reload_instruction object=\"data\" node=\"\"/></tree>");
+			return;
+		}
+		fwrite(post_data+start,1,i-start,f);
+		fclose(f);
+		mg_printf(conn,"<?xml version=\"1.0\" encoding=\"UTF-8\"?><tree><message type=\"SUCCESS\">The file uploaded to %s.</message><reload_instruction object=\"data\" node=\"\"/></tree>",filepath);
+//		printf("upload OK\n");
+*/
 		send_ok(conn);
 		std::string dir = getoption(ri->query_string,"dir=");
 		char to[FILENAME_MAX];
@@ -6253,9 +8217,12 @@ testfb(struct mg_connection *conn,
 	if (ri->permissions != PERM_ROOT)
 		return;
 	lock_wakelock();
+	access_log(ri,"run testfb");
 	send_ok(conn);
 
         size_t pixels;
+
+//        pixels = scrinfo.xres_virtual * scrinfo.yres_virtual;
         pixels = scrinfo.xres * scrinfo.yres;
         bytespp = scrinfo.bits_per_pixel / 8;
 	if (bytespp == 3)
@@ -6326,7 +8293,7 @@ testfb(struct mg_connection *conn,
 		mg_printf(conn,"map[%d] is %d\n",100*i+i,map[100*i+i]);
 		mg_printf(conn,"map2[%d] is %d\n",100*i+i,map2[100*i+i]);
 	}
-
+		
 }
 
 static void
@@ -6336,6 +8303,7 @@ testtouch(struct mg_connection *conn,
 	if (ri->permissions != PERM_ROOT)
 		return;
 	lock_wakelock();
+	access_log(ri,"run testtouch");
 	send_ok(conn);
 	if (is_icecreamsandwich)
 		mg_printf(conn,"this is icrecreamsandwich\n");
@@ -6472,9 +8440,10 @@ testtouch(struct mg_connection *conn,
 				m = m+"TOUCH("+itoa(buff, ev.code)+")";
 			else
 				m = m+itoa(buff, ev.code);
-
+			
 			m = m+ ", ev.value = "+itoa(buff, ev.value);
 
+			//mg_printf(conn,"ev.type = %d, ev.code = %d, ev.value = %d\n",ev.type,ev.code,ev.value);
 			mg_printf(conn,"%s\n",m.c_str());
 		}
 	}
@@ -6623,6 +8592,7 @@ reread(struct mg_connection *conn,
 	send_ok(conn);
 	if (ri->remote_ip!=2130706433 || strcmp(ri->remote_user,"JAVA_CLIENT") != 0) //localhost
 	{
+//		printf("reread request failed, permission's denied.\n");
 		return;
 	}
 	read_prefs();
@@ -6642,6 +8612,96 @@ javatest(struct mg_connection *conn,
     mg_printf(conn,"Webkey");
 }
 
+static void
+check_notify()
+{
+	struct timeval t;
+	gettimeofday(&t, NULL);
+
+	if (notify.lastalarm + 60*notify.interval > t.tv_sec)
+		return;
+
+	bool oldstate = (notify.smson && notify.smsalarmed) || (notify.callon && notify.callalarmed);
+	struct stat s;
+	if (notify.smson && !stat("/data/data/com.android.providers.telephony/databases/mmssms.db",&s) && s.st_mtime != notify.lastsmstime)
+	{
+		notify.lastsmstime = s.st_mtime;
+		std::string cmd = dir + "sqlite3 /data/data/com.android.providers.telephony/databases/mmssms.db 'select \"_id\",\"read\",\"type\" from sms where \"type\"==1 and \"read\"==0'";
+		pthread_mutex_lock(&popenmutex);
+		fprintf(pipeout,"%s\n",cmd.c_str());
+		fflush(NULL);
+		char buff[LINESIZE];
+		notify.smsalarmed = false;
+		while (fgets(buff, LINESIZE-1, pipein) != NULL)
+		{
+			if (strcmp(buff,"!!!END_OF_POPEN!!!\n")==0)
+				break;
+			else
+				notify.smsalarmed = true;
+		}
+		pthread_mutex_unlock(&popenmutex);
+	}
+	if (notify.callon && !stat("/data/data/com.android.providers.contacts/databases/contacts2.db",&s) && s.st_mtime != notify.lastcalltime)
+	{
+		notify.lastcalltime = s.st_mtime;
+		std::string cmd = dir + "sqlite3 /data/data/com.android.providers.contacts/databases/contacts2.db \'select \"_id\",\"type\",\"new\" from calls where \"type\"==3 and \"new\"==1\'";
+		pthread_mutex_lock(&popenmutex);
+		fprintf(pipeout,"%s\n",cmd.c_str());
+		fflush(NULL);
+		char buff[LINESIZE];
+		notify.callalarmed = false;
+		while (fgets(buff, LINESIZE-1, pipein) != NULL)
+		{
+			if (strcmp(buff,"!!!END_OF_POPEN!!!\n")==0)
+				break;
+			else
+				notify.callalarmed = true;
+		}
+		pthread_mutex_unlock(&popenmutex);
+	}
+	if ((notify.smson && notify.smsalarmed) || (notify.callon && notify.callalarmed))
+	{
+		if (notify.blink && notify.blinktype == 1)
+			set_blink(1,notify.blinkon,notify.blinkoff);
+
+		if (oldstate)
+		{
+			if (notify.blink && notify.blinktype == 0)
+				set_blink(1,notify.blinkon,notify.blinkoff);
+			if (notify.vibrate)
+			{
+				lock_wakelock();
+				int v, p, i;
+				p = 0; v = 0;
+				i = -1;
+				bool b;
+				b = false;
+				while (i < notify.vibratepatt.size() || i == -1)
+				{
+					if (i == -1 || notify.vibratepatt[i] == '~')
+					{
+						p = v;
+						v = getnum(notify.vibratepatt.c_str()+i+1);
+						b = !b;
+						if (b)
+							vibrator_on(v);
+						else
+							usleep((p+v)*1000);
+					}
+					i++;
+				}
+				if (!b && notify.blink && notify.blinktype == 0)
+					usleep(v*1000);
+			}
+			if (notify.blink && notify.blinktype == 0)
+				set_blink(0,0,0);
+		}
+		notify.lastalarm = t.tv_sec;
+	}
+	else
+		if (oldstate && notify.blink && notify.blinktype == 1)
+			set_blink(0,0,0);
+}
 //from ShellInABox
 static char *jsonEscape(const char *buf, int len) {
 	static const char *hexDigit = "0123456789ABCDEF";
@@ -6762,6 +8822,8 @@ static int create_subprocess(pid_t* pProcessId)
     } else {
 	usleep(100000);
         *pProcessId = pid;
+	//char buf[200];
+//	write(ptm,"# Closed after 60 minutes of inactivity.\n",8);
         return ptm;
     }
 }
@@ -6772,6 +8834,7 @@ shellinabox(struct mg_connection *conn,
 {
 	if (ri->permissions != PERM_ROOT)
 		return;
+	access_log(ri,"run terminal");
 	char* post_data;
 	int post_data_len;
 	read_post_data(conn,ri,&post_data,&post_data_len);
@@ -6863,6 +8926,7 @@ shellinabox(struct mg_connection *conn,
 		sessions.push_back(session);
 		if (ptm >= 0)
 			mg_printf(conn,"{\"session\":\"%d\",\"data\":\"\"}\n",sessions.size()-1);
+		//	mg_printf(conn,"{\"session\":\"%d\",\"data\":\"%s\\r\\n\"}\n",sessions.size()-1,lang(ri,"This terminal will be closed after 60 minutes of inactivity."));
 		printf("terminal started\n");
 		if (post_data)
 			delete[] post_data;
@@ -6870,6 +8934,7 @@ shellinabox(struct mg_connection *conn,
 	}
 	if (sessionid == -1 || sessionid >= sessions.size())
 	{
+//		printf("Wrong sessionid\n");
 		if (post_data)
 			delete[] post_data;
 		return;
@@ -6897,7 +8962,9 @@ shellinabox(struct mg_connection *conn,
 	      //printf("size updated\n");
 	}
 
+//	printf("POST %s\n",ri->post_data);
   if (keys_received) {
+//	  printf("%s\n",keys.c_str());
     lock_wakelock();
     char *keyCodes;
     keyCodes = new char[keys.length()/2];
@@ -6942,17 +9009,429 @@ shellinabox(struct mg_connection *conn,
 	  pthread_mutex_unlock(&(session->mutex));
 	  return;
   }
+//  if (n<=0 || (n==4 && buf[0] == '\x1B' && buf[1] == '[' && buf[2] == '3' && buf[3] == 'n'))
   if (s<0 || n <= 0)
   {
 	  session->alive = false;
 	  close(session->ptm);
+//	  printf("CLOSED TERMINAL\n");
 	  pthread_mutex_unlock(&(session->mutex));
 	  return;
   }
   char* t = jsonEscape(buf,n);
+//  printf("%d: ",n);
+//  for (i=0; i < n; i++)
+//	  printf("%d, ",buf[i]);
+//  printf("\n");
+//  if (n==4 && buf[0] == '\x1B' && buf[1] == '[' && buf[2] == '0' && buf[3] == 'n')
+//	  mg_printf(conn,"{\"session\":\"%d\",\"data\":\"\"}\n",sessionid);
+//  else
 	mg_printf(conn,"{\"session\":\"%d\",\"data\":\"%s\"}\n",sessionid,t);
+//  printf("%s\n",t);
   delete[] t;
   pthread_mutex_unlock(&(session->mutex));
+}
+static void
+startrecord(struct mg_connection *conn,
+                const struct mg_request_info *ri, void *data)
+{
+	if (ri->permissions != PERM_ROOT && (ri->permissions&PERM_SCREENSHOT)==0)
+		return;
+	lock_wakelock();
+	access_log(ri,"record screenshots");
+	int st = mkdir("/sdcard/webkey_TEMP", 0777);
+	int orient = 0;
+	bool png = false;
+	if (ri->uri[12] == 'p')
+		png = true;
+	if (ri->uri[16] == 'h') // horizontal
+		orient = 1;
+	int lowres = 0;
+	if (ri->uri[17] == 'l') // low res
+		lowres = 1;
+	firstfb = false;
+	if (ri->uri[18] == 'f') // first fb
+		firstfb = true;
+	bool flip = false;
+	if (ri->uri[19] == 'f') // flip
+		flip = true;
+	recordingnum = 0;
+	recordingnumfinished = -1;
+	recording = true;
+	while (recording && recordingnum < 1000)
+	{
+		if (!pict)
+			init_fb();
+		if (!pthread_mutex_trylock(&pngmutex))
+		{
+//			printf("A\n");
+			update_image(orient,lowres,png,flip,false);
+			pthread_mutex_unlock(&pngmutex);
+		}
+		else
+		{
+//			printf("B\n");
+			pthread_mutex_lock(&pngmutex);
+			pthread_mutex_unlock(&pngmutex);
+		}
+		lastorient = orient;
+		lastflip = flip;
+		if (!picchanged)
+		{
+//			printf("C\n");
+//			printf("picchanged = %d\n",picchanged);
+			pthread_mutex_lock(&diffmutex);
+			pthread_cond_broadcast(&diffstartcond);
+			if (!exit_flag)
+				pthread_cond_wait(&diffcond,&diffmutex);
+			pthread_mutex_unlock(&diffmutex);
+//			printf("picchanged = %d\n",picchanged);
+		}
+	}
+	send_ok(conn);
+}
+static void
+finishrecord(struct mg_connection *conn,
+                const struct mg_request_info *ri, void *data)
+{
+	if (ri->permissions != PERM_ROOT && (ri->permissions&PERM_SCREENSHOT)==0)
+		return;
+	lock_wakelock();
+	recording = false;
+	pthread_mutex_lock(&pngmutex);
+	pthread_mutex_unlock(&pngmutex);
+	zipFile zf = zipOpen("/sdcard/webkey_TEMP/screenshots.zip",0);
+	   DIR *d = opendir("/sdcard/webkey_TEMP/");
+	   size_t path_len = strlen("/sdcard/webkey_TEMP/");
+	   int r = -1;
+	   if (d)
+	   {
+	      struct dirent *p;
+	      r = 0;
+	      while (!r && (p=readdir(d)))
+	      {
+		  int r2 = -1;
+		  char *buf;
+		  size_t len;
+		  int l = strlen(p->d_name);
+		  if (l > 3 && (strcmp(p->d_name+l-3,"jpg") == 0 || !strcmp(p->d_name+l-3, "png")))
+		  {
+			  zip_fileinfo fi;
+			  fi.tmz_date.tm_year = 2010;
+			  fi.dosDate = 0;
+			  fi.internal_fa = 0;
+			  fi.external_fa = 0;
+			  if (strcmp(p->d_name+l-3,"jpg") == 0)
+				  zipOpenNewFileInZip(zf,p->d_name,&fi,NULL,0,NULL,0,"",Z_DEFLATED,Z_DEFAULT_COMPRESSION);
+			  else
+				  zipOpenNewFileInZip(zf,p->d_name,&fi,NULL,0,NULL,0,"",0,0);
+			  FILE* f;
+			  std::string path = std::string("/sdcard/webkey_TEMP/") + p->d_name;
+			  f = fopen(path.c_str(),"rb");
+			  if (!f)
+				  return;
+			  fseek (f , 0 , SEEK_END);
+			  int lSize = ftell (f);
+			  rewind (f);
+			  char* filebuffer = new char[lSize+1];
+			  if(!filebuffer)
+			  {
+				  error("not enough memory for loading tmp.png\n");
+			  }
+			  fread(filebuffer,1,lSize,f);
+			  filebuffer[lSize] = 0;
+			  zipWriteInFileInZip(zf,filebuffer,lSize);
+			  fclose(f);
+			  delete[] filebuffer;
+			  zipCloseFileInZip(zf);
+		  }
+	      }
+	      zipClose(zf,"");
+	      FILE* f;
+	      f = fopen("/sdcard/webkey_TEMP/screenshots.zip","rb");
+	      fseek (f , 0 , SEEK_END);
+	      int lSize = ftell (f);
+	      rewind (f);
+	      char* buf[65536];
+	      if (!f)
+		      return;
+	      send_ok(conn,"Content-Type: application/zip; charset=UTF-8\r\nContent-Disposition: attachment;filename=screenshots.zip",lSize);
+	      while(1)
+	      {
+		      int num_read = 0;
+		      if ((num_read = fread(buf, 1, 65536, f)) == 0)
+			      break;
+		      if (mg_write(conn, buf, num_read) != num_read)
+			      break;
+	      }
+	      fclose(f);
+	      remove_directory("/sdcard/webkey_TEMP");
+	   }
+}
+static void
+set_sl4a(struct mg_connection *conn,
+                const struct mg_request_info *ri, void *data)
+{
+//	printf("set_sl4a\n");
+//	fflush(NULL);
+	if (ri->remote_ip!=2130706433 || strcmp(ri->remote_user,"JAVA_CLIENT") != 0) //localhost
+		return;
+	sl4a_port = getnum(ri->uri+9);
+	int i = 9;
+	while (ri->uri[i] && ri->uri[i] != '_')
+		i++;
+	if (ri->uri[i])
+		sl4a_uuid = ri->uri+i+1;
+//	printf("port = %d\n",sl4a_port);
+//	printf("str = %s\n",sl4a_uuid.c_str());
+//	fflush(NULL);
+	send_ok(conn);
+}
+
+static std::string request_sl4a(struct mg_connection *conn, const char* request)
+{
+	std::string ret;
+	char buf[10240];
+	for (int i = 0; i < 30; i++)
+	{
+//	printf("in cycle %d\n",i);
+//	fflush(NULL);
+		if (sl4a_socket ==0)
+		{
+			if ((sl4a_socket = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+//				printf("error opening socket from webkey.c\n");
+				sleep(1);
+				sl4a_socket = 0;
+				continue;
+			}
+			struct sockaddr_in addr;
+			addr.sin_addr.s_addr = 	inet_addr("127.0.0.1");
+			addr.sin_port = htons(sl4a_port);
+			addr.sin_family = AF_INET;
+//	printf("before connect\n");
+//		fflush(NULL);
+			if (sl4a_port == 0 || connect(sl4a_socket, (struct sockaddr *)&addr, sizeof(struct sockaddr_in)) < 0)
+			{
+				shutdown(sl4a_socket,SHUT_RDWR);
+				close(sl4a_socket);
+//				printf("unable to connect to sl4a from webkey.c\n");
+				if (i%10 == 0)
+					syst("/system/bin/am broadcast -a \"webkey.intent.action.SL4a.START\" -n \"com.webkey/.SL4A\"");
+				sleep(1);
+				sl4a_socket = 0;
+				continue;
+			}
+//			printf("connected, before send\n");
+//		fflush(NULL);
+//			printf("%s\n",request);
+			std::string str = "{\"params\": [\"";
+			str = str + sl4a_uuid.c_str();
+			str = str + "\"], \"id\": 0, \"method\": \"_authenticate\"}\n";
+//			printf("%s\n",str.c_str());
+//		fflush(NULL);
+			if (send(sl4a_socket, str.c_str(), str.size(), MSG_NOSIGNAL) < 0)
+			{
+				shutdown(sl4a_socket,SHUT_RDWR);
+				close(sl4a_socket);
+//				printf("unable to send data to SL4A after connection, retrying\n");
+				sleep(1);
+				sl4a_socket = 0;
+				continue;
+			}
+			bzero(buf, sizeof(buf));
+//		printf("before auth read\n");
+//		fflush(NULL);
+			if (read(sl4a_socket, buf, sizeof(buf)-1) == 0)
+			{
+				shutdown(sl4a_socket,SHUT_RDWR);
+				close(sl4a_socket);
+//				printf("unable to read data from SL4A after connection, retrying\n");
+				sleep(1);
+				sl4a_socket = 0;
+				continue;
+			}
+//			printf("%s\n",buf);
+		}
+		bzero(buf, sizeof(buf));
+//	printf("before send: %s\n",request);
+//	fflush(NULL);
+		int n = strlen(request);
+		if (send(sl4a_socket, request, n,MSG_NOSIGNAL) <=0 || (request[n-1] != '\n' && send(sl4a_socket, "\n", 1,MSG_NOSIGNAL)<=0))
+		{
+			shutdown(sl4a_socket,SHUT_RDWR);
+			close(sl4a_socket);
+			sl4a_socket = 0;
+			continue;
+		}
+//	printf("before read\n");
+//	fflush(NULL);
+		int r = 0;
+		while ((r = read(sl4a_socket, buf, sizeof(buf)-1)) > 0)
+		{
+//			if (buf[r-1] == '\n')
+//				buf[r-1] = 0;
+//			printf("%s\n",buf);
+//			mg_write(conn,buf,strlen(buf));
+			ret = ret + buf;
+			if (buf[r-1] == '\n')
+				break;
+			bzero(buf, sizeof(buf));
+		}
+		//shutdown(s,SHUT_RDWR);
+		//close(s);
+		break;
+	}
+	return ret;
+}
+static void
+sl4a(struct mg_connection *conn,
+                const struct mg_request_info *ri, void *data)
+{
+//	printf("got request\n");
+//	fflush(NULL);
+	if (ri->permissions != PERM_ROOT)
+		return;
+	access_log(ri,"sl4a");
+	send_ok(conn);
+	lock_wakelock();
+	char* post_data;
+	int post_data_len;
+	read_post_data(conn,ri,&post_data,&post_data_len);
+	if (!post_data)
+		return;
+	pthread_mutex_lock(&sl4amutex);
+	std::string ret = request_sl4a(conn,post_data);
+	mg_write(conn,ret.c_str(),ret.size());
+	pthread_mutex_unlock(&sl4amutex);
+	if (post_data)
+		delete[] post_data;
+}
+static void
+sl4as(struct mg_connection *conn,
+                const struct mg_request_info *ri, void *data)
+{
+//	printf("got request\n");
+//	fflush(NULL);
+	if (ri->permissions != PERM_ROOT)
+		return;
+	access_log(ri,"sl4a");
+	send_ok(conn);
+	lock_wakelock();
+	char* post_data;
+	int post_data_len;
+	read_post_data(conn,ri,&post_data,&post_data_len);
+	if (!post_data)
+		return;
+	pthread_mutex_lock(&sl4amutex);
+	int i = 0;
+	mg_printf(conn,"[");
+	int last = 0;
+	bool first = true;
+	std::string ret;
+	while (i < post_data_len)
+	{
+		if (post_data[i] == '\n')
+		{
+			post_data[i] = 0;
+			if (!first)
+				mg_printf(conn,",");
+			first = false;
+			ret = request_sl4a(conn,post_data+last);
+			mg_write(conn,ret.c_str(),ret.size());
+			last = i+1;
+		}
+		i++;
+	}
+	if (last < i)
+	{
+		if (!first)
+			mg_printf(conn,",");
+		first = false;
+		ret = request_sl4a(conn,post_data+last);
+		mg_write(conn,ret.c_str(),ret.size());
+	}
+	mg_printf(conn,"]");
+	pthread_mutex_unlock(&sl4amutex);
+	if (post_data)
+		delete[] post_data;
+}
+static void
+sl4ascached(struct mg_connection *conn,
+                const struct mg_request_info *ri, void *data)
+{
+//	printf("got request\n");
+//	fflush(NULL);
+	if (ri->permissions != PERM_ROOT)
+		return;
+	access_log(ri,"sl4a");
+	send_ok(conn);
+	lock_wakelock();
+	char* post_data;
+	int post_data_len;
+	read_post_data(conn,ri,&post_data,&post_data_len);
+	if (!post_data)
+		return;
+	pthread_mutex_lock(&sl4amutex);
+	int i = 0;
+	mg_printf(conn,"[");
+	int last = 0;
+	bool first = true;
+	std::string ret;
+	char buff[32];
+	while (i < post_data_len)
+	{
+		if (post_data[i] == '\n')
+		{
+			post_data[i] = 0;
+			int rev = getnum(post_data+last);
+			while(last<i && post_data[last] != '{')
+				last++;
+			ret = request_sl4a(conn,post_data+last);
+			int drev = sl4a_requests_rev[post_data+last];
+			if (ret != sl4a_requests[post_data+last])
+			{
+				sl4a_requests[post_data+last] = ret;
+				sl4a_requests_rev[post_data+last] = ++drev;
+			}
+			if (rev != drev)
+			{
+				if (!first)
+					mg_printf(conn,",");
+				first = false;
+				ret = ret.substr(0,ret.size()-2)+",\"rev\":"+itoa(buff,drev)+"}";
+				mg_write(conn,ret.c_str(),ret.size());
+			}
+			last = i+1;
+		}
+		i++;
+	}
+	if (last < i)
+	{
+		post_data[i] = 0;
+		int rev = getnum(post_data+last);
+		while(last<i && post_data[last] != '{')
+			last++;
+		ret = request_sl4a(conn,post_data+last);
+		int drev = sl4a_requests_rev[post_data+last];
+		if (ret != sl4a_requests[post_data+last])
+		{
+			sl4a_requests[post_data+last] = ret;
+			sl4a_requests_rev[post_data+last] = ++drev;
+		}
+		if (rev != drev)
+		{
+			if (!first)
+				mg_printf(conn,",");
+			first = false;
+			ret = ret.substr(0,ret.size()-2)+",\"rev\":"+itoa(buff,drev)+"}";
+			mg_write(conn,ret.c_str(),ret.size());
+		}
+		last = i+1;
+	}
+	mg_printf(conn,"]");
+	pthread_mutex_unlock(&sl4amutex);
+	if (post_data)
+		delete[] post_data;
 }
 
 static void *event_handler(enum mg_event event,
@@ -6962,21 +9441,26 @@ static void *event_handler(enum mg_event event,
 	  return 0;
   printf("u: ~%s~\n",request_info->uri);
   fflush(NULL);
+  //access_log(request_info,"log in");
   void *processed = (void*)1;
-  if (urlcompare(request_info->uri, "/screenshot.*"))
-	screenshot(conn, request_info, NULL);
-#if 0
-  else if (urlcompare(request_info->uri, "/") || urlcompare(request_info->uri,"/index.html"))
-		getfile(conn, request_info, NULL);
+  if (urlcompare(request_info->uri, "/") || urlcompare(request_info->uri,"/index.html"))
+	getfile(conn, request_info, NULL);
   else if (urlcompare(request_info->uri, "/phone.html"))
   {
       index(conn, request_info, NULL);
   }
-  else if (urlcompare(request_info->uri, "/main.html")||
+  else if (urlcompare(request_info->uri, "/calls.html") ||
+		  urlcompare(request_info->uri, "/main.html")||
+		  urlcompare(request_info->uri, "/gps.html")||
+		  urlcompare(request_info->uri, "/help.html")||
 		  urlcompare(request_info->uri, "/pure_menu.html")||
 		  urlcompare(request_info->uri, "/pure_menu_nochat.html")||
+		  urlcompare(request_info->uri, "/export.html")||
 		  urlcompare(request_info->uri, "/chat.html")||
+		  urlcompare(request_info->uri, "/net.html")||
 		  urlcompare(request_info->uri, "/sms.html")||
+		  urlcompare(request_info->uri, "/files.html")||
+		  urlcompare(request_info->uri, "/sdcard.html")||
 		  urlcompare(request_info->uri, "/terminal.html")||
 		  urlcompare(request_info->uri, "/js/webkey.js") ||
 		  urlcompare(request_info->uri, "/js/screenshot.js")
@@ -6990,6 +9474,8 @@ static void *event_handler(enum mg_event event,
 	reg(conn, request_info, NULL);
   else if (urlcompare(request_info->uri, "/getreg"))
 	getreg(conn, request_info, NULL);
+  else if (urlcompare(request_info->uri, "/screenshot.*"))
+	screenshot(conn, request_info, NULL);
   else if (urlcompare(request_info->uri, "/injkey*"))
 	key(conn, request_info, NULL);
   else if (urlcompare(request_info->uri, "/oldkey*"))
@@ -7002,16 +9488,26 @@ static void *event_handler(enum mg_event event,
 	savekeys(conn, request_info, NULL);
   else if (urlcompare(request_info->uri, "/button*"))
 	button(conn, request_info, NULL);
+  else if (urlcompare(request_info->uri, "/gpsget"))
+	gpsget(conn, request_info, NULL);
+  else if (urlcompare(request_info->uri, "/gpsset*"))
+	gpsset(conn, request_info, NULL);
   else if (urlcompare(request_info->uri, "/config_buttons.html"))
 	config_buttons(conn, request_info, NULL);
   else if (urlcompare(request_info->uri, "/config_keys.html"))
 	config_keys(conn, request_info, NULL);
+  else if (urlcompare(request_info->uri, "/notify.html"))
+	notify_html(conn, request_info, NULL);
+  else if (urlcompare(request_info->uri, "/setnotify*"))
+	setnotify(conn, request_info, NULL);
   else if (urlcompare(request_info->uri, "/intent_*"))
 	intent(conn, request_info, NULL);
   else if (urlcompare(request_info->uri, "/run*"))
 	run(conn, request_info, NULL);
   else if (urlcompare(request_info->uri, "/stop"))
 	stop(conn, request_info, NULL);
+//  else if (urlcompare(request_info->uri, "/password"))
+//	password(conn, request_info, NULL);
   else if (urlcompare(request_info->uri, "/javatest"))
 	javatest(conn, request_info, NULL);
   else if (urlcompare(request_info->uri, "/config"))
@@ -7026,8 +9522,12 @@ static void *event_handler(enum mg_event event,
 	emptyresponse(conn, request_info, NULL);
   else if (urlcompare(request_info->uri, "/passwords.txt*"))
 	emptyresponse(conn, request_info, NULL);
+  else if (urlcompare(request_info->uri, "/sdcard*"))
+	sdcard(conn, request_info, NULL);
   else if (urlcompare(request_info->uri, "/content.php*"))
 	content(conn, request_info, NULL);
+  else if (urlcompare(request_info->uri, "/export_*"))
+	exports(conn, request_info, NULL);
   else if (urlcompare(request_info->uri, "/client/flash/content.php*"))
 	content(conn, request_info, NULL);
   else if (urlcompare(request_info->uri, "/TOUCHTEST"))
@@ -7036,14 +9536,48 @@ static void *event_handler(enum mg_event event,
 	testfb(conn, request_info, NULL);
   else if (urlcompare(request_info->uri, "/reread"))
 	reread(conn, request_info, NULL);
+  else if (urlcompare(request_info->uri, "/sms.xml"))
+	smsxml(conn, request_info, NULL);
+  else if (urlcompare(request_info->uri, "/contacts.xml"))
+	contactsxml(conn, request_info, NULL);
+  else if (urlcompare(request_info->uri, "/calls.xml"))
+	callsxml(conn, request_info, NULL);
   else if (urlcompare(request_info->uri, "/waitdiff"))
 	waitdiff(conn, request_info, NULL);
+  else if (urlcompare(request_info->uri, "/sendsms"))
+	sendsms(conn, request_info, NULL);
   else if (urlcompare(request_info->uri, "/sendbroadcast"))
 	sendbroadcast(conn, request_info, NULL);
   else if (urlcompare(request_info->uri, "/shellinabox*"))
 	shellinabox(conn, request_info, NULL);
+  else if (urlcompare(request_info->uri, "/getchatmessage_*"))
+	getchatmessage(conn, request_info, NULL);
+  else if (urlcompare(request_info->uri, "/writechatmessage"))
+	writechatmessage(conn, request_info, NULL);
+  else if (urlcompare(request_info->uri, "/clearchatmessage"))
+	clearchatmessage(conn, request_info, NULL);
+  else if (urlcompare(request_info->uri, "/phonegetchatmessage_*"))
+	phonegetchatmessage(conn, request_info, NULL);
+  else if (urlcompare(request_info->uri, "/phonewritechatmessage"))
+	phonewritechatmessage(conn, request_info, NULL);
+  else if (urlcompare(request_info->uri, "/phoneclearchatmessage"))
+	phoneclearchatmessage(conn, request_info, NULL);
   else if (urlcompare(request_info->uri, "/adjust_light_*"))
 	adjust_light(conn, request_info, NULL);
+  else if (urlcompare(request_info->uri, "/startrecord*"))
+	startrecord(conn, request_info, NULL);
+  else if (urlcompare(request_info->uri, "/finishrecord"))
+	finishrecord(conn, request_info, NULL);
+  else if (urlcompare(request_info->uri, "/sl4a"))
+	sl4a(conn, request_info, NULL);
+  else if (urlcompare(request_info->uri, "/sl4as"))
+	sl4as(conn, request_info, NULL);
+  else if (urlcompare(request_info->uri, "/sl4ascached"))
+	sl4ascached(conn, request_info, NULL);
+  else if (urlcompare(request_info->uri, "/set_sl4a*"))
+	set_sl4a(conn, request_info, NULL);
+  else if (urlcompare(request_info->uri, "/brightness"))
+	brightness(conn, request_info, NULL);
   else if (urlcompare(request_info->uri, "/netinfo"))
 	netinfo(conn, request_info, NULL);
   else if (urlcompare(request_info->uri, "/meminfo"))
@@ -7058,21 +9592,39 @@ static void *event_handler(enum mg_event event,
   }
   else if (urlcompare(request_info->uri, "/test"))
 	test(conn, request_info, NULL);
-#endif
+//  else if (urlcompare(request_info->uri, "/segfault"))
+//  {
+//	  int* i = 0; // go segfault as requested :)
+//	  int j = *i;
+//  }
   else
 	processed = NULL;
 
+/*  if (event == MG_NEW_REQUEST) {
+    if (!request_info->is_ssl) {
+      redirect_to_ssl(conn, request_info);
+    } else if (!is_authorized(conn, request_info)) {
+      redirect_to_login(conn, request_info);
+    } else if (strcmp(request_info->uri, authorize_url) == 0) {
+      authorize(conn, request_info);
+    } else if (strcmp(request_info->uri, "/ajax/get_messages") == 0) {
+      ajax_get_messages(conn, request_info);
+    } else if (strcmp(request_info->uri, "/ajax/send_message") == 0) {
+      ajax_send_message(conn, request_info);
+    } else {
+      // No suitable handler found, mark as not processed. Mongoose will
+      // try to serve the request.
+      processed = NULL;
+    }
+  } else {
+    processed = NULL;
+  }
+*/
   return processed;
 }
 
-
 int main(int argc, char **argv)
 {
-	if (argc < 2) {
-		printf("webkey <TOKEN>\n");
-		exit(1);
-	}
-
 	FILE* ___f = fopen("/data/data/com.webkey/files/log.txt","w");
 	if (___f)
 		fclose(___f);
@@ -7083,6 +9635,11 @@ int main(int argc, char **argv)
 #ifdef ANDROID
 	__android_log_print(ANDROID_LOG_INFO,"Webkey C++","service's started");
 #endif
+//#ifdef VFP
+//	printf("Compiled with VFP floating point (for example Xperia X10 needs that).\n");
+//#else
+//	printf("Compiled without VFP floating point.\n");
+//#endif
 	modelname[0] = 0;
 	deflanguage[0] = 0;
 	manufacturer[0] = 0;
@@ -7096,7 +9653,7 @@ int main(int argc, char **argv)
 #ifdef ANDROID
 	__system_property_get("ro.product.manufacturer",manu);
 #endif
-
+	
 	char buildversion[PROP_VALUE_MAX];
 	buildversion[0] = 0;
 #ifdef ANDROID
@@ -7107,8 +9664,8 @@ int main(int argc, char **argv)
 	{
 		is_icecreamsandwich = true;
 		use_uinput_mouse = true;
-		if( access( "/dev/uinput", F_OK ) == -1  &&
-			access( "/dev/input/uinput", F_OK ) == -1  &&
+		if( access( "/dev/uinput", F_OK ) == -1  && 
+			access( "/dev/input/uinput", F_OK ) == -1  &&	
 			access( "/dev/misc/uinput", F_OK ) == -1)
 			use_uinput_mouse = false;
 	}
@@ -7140,7 +9697,7 @@ int main(int argc, char **argv)
 
 	if (check_type(manu,"samsung"))
 		samsung = true;
-	int i;
+	int i; 
 	for (i=0;deflanguage[i] && i < PROP_VALUE_MAX;i++)
 		if (deflanguage[i] >= 'A' && deflanguage[i] <= 'Z')
 			deflanguage[i] += 'a'-'A';
@@ -7235,7 +9792,7 @@ int main(int argc, char **argv)
 		FILE* out = fdopen(pipeback[1],"w");
 		if (!out)
 			error("Unable to open pipeback.");
-		while (fgets(line, sizeof(line)-1, in) != NULL)
+		while (fgets(line, sizeof(line)-1, in) != NULL) 
 		{
 			if (strlen(line))
 				line[strlen(line)-1] = 0;
@@ -7249,6 +9806,31 @@ int main(int argc, char **argv)
 				fflush(out);
 				continue;
 			}
+//			printf("%s\n",line);
+//			fflush(NULL);
+/*			if (line[0] == 'B')
+			{
+				FILE* p = mypopen(line+1,"r");
+				if (p)
+				{
+					int a;
+					while ((a=fread(buff, 1, sizeof(buff)-1, p)) == sizeof(buff)-1)
+					{
+						fwrite(buff,1,a,out);
+					}
+					if (a)
+						fwrite(buff,1,a,out);
+					mypclose(p);
+					fflush(NULL);
+				}
+				else
+				{
+					printf("error calling popen\n");
+					fflush(NULL);
+				}
+			}
+			else
+*/ //			{
 				FILE* p = mypopen(line,"r");
 				if (p)
 				{
@@ -7260,6 +9842,7 @@ int main(int argc, char **argv)
 				}
 				else
 					printf("error calling popen\n");
+//			}
 			fprintf(out,"!!!END_OF_POPEN!!!\n");
 			fflush(out);
 		}
@@ -7280,6 +9863,9 @@ int main(int argc, char **argv)
 		error("Unable to open pipein.");
 
 
+//	int terminal_pid;
+//	create_subprocess(&terminal_pid);
+
 	for (i = strlen(argv[0])-1; i>=0; i--)
 		if (argv[0][i] == '/')
 		{
@@ -7288,31 +9874,50 @@ int main(int argc, char **argv)
 		}
 	dir = argv[0];
 	stat(argv[0], &info);
+	chmod("/data/data/com.webkey/files/log.txt", S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP);
+	chown("/data/data/com.webkey/files/log.txt", info.st_uid, info.st_gid);
+	chmod("/data/data/com.webkey/files/log.txt", S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP);
+	printf("dir: %s\n",dir.c_str());
+	logfile = dir+"log.txt";
+	pthread_mutex_init(&logmutex, NULL);
+	pthread_mutex_init(&sl4amutex, NULL);
+	pthread_mutex_init(&netmutex, NULL);
 	pthread_mutex_init(&initfbmutex, NULL);
+	pthread_mutex_init(&chatmutex, NULL);
+	pthread_cond_init(&chatcond,0);
+	access_log(NULL,"service's started");
 	dirdepth = -1;
 	for (i = 0; i < strlen(argv[0]); i++)
 		if (argv[0][i] == '/')
 			dirdepth++;
-
-
+	//printf("%d\n",dirdepth);
+	
 	port = 81;
 	sslport = 443;
-//	read_prefs();
-	token = argv[1];
-	printf("Token is [%s]\n", token);
+	read_prefs();
+	if (argc >= 2)
+		port = strtol (argv[1], 0, 10);
+	if (argc >= 3)
+		sslport = strtol (argv[2], 0, 10);
 	if (port <= 0 || sslport <= 0)
 		error("Invalid port\n");
 	fbfd = -1;
         if (is_icecreamsandwich == false && ignore_framebuffer == false && (fbfd = open(FB_DEVICE, O_RDONLY)) == -1)
         {
+                //error("open framebuffer\n");
 #ifdef ANDROID
 		__android_log_print(ANDROID_LOG_ERROR,"Webkey C++","error opening framebuffer, let's try other tricks");
 #endif
+		//printf("error opening framebuffer, using adb\n");
+		//syst("setprop service.adb.root 1");
+		//syst("stop adbd");
+		//syst("start adbd");
         }
 	if (fbfd >= 0)
 	{
 		if (ioctl(fbfd, FBIOGET_VSCREENINFO, &scrinfo) != 0)
 		{
+//			error("error reading screeninfo\n");
 			printf("error reading screeninfo, fall back\n");
 			fbfd = -1;
 		}
@@ -7350,8 +9955,14 @@ int main(int argc, char **argv)
 		{
 			printf("s %d\n",i);
 			fflush(NULL);
+//				pthread_mutex_lock(&popenmutex);
+//				fprintf(pipeout,"B%s\n",screencapbinaries[i].name);
 				fflush(NULL);
 				FILE* sc = mypopen(screencapbinaries[i].name,"r");
+				//fprintf(pipeout,"Bls\n");
+//				printf("going on\n");
+//				fflush(NULL);
+				//char buff[12];
 			int a;
 			uint32_t size[3];
 			int x,y,format;
@@ -7426,7 +10037,58 @@ int main(int argc, char **argv)
 			while (fread(temp,4,1000,sc));
 			mypclose(sc);
 			break;
-		}
+/*				while (i = fread(buff, 1, 12, p))
+				{
+					printf("%d\n",i);
+					fflush(NULL);
+					break;
+//					if (strcmp(buff,"!!!END_OF_POPEN!!!\n")==0)
+//						break;
+				}
+			//        fflush(stdout);
+					printf("a2\n");
+					fflush(NULL);
+				mypclose(p);
+				fflush(NULL);
+				if (i)
+					break;
+//				pthread_mutex_unlock(&popenmutex);
+//				break;
+*/
+			/*			fflush(NULL);
+			printf("%s\n",screencapbinaries[i].name);
+			if ((sc = popen(screencapbinaries[i].name,"r"))==NULL)
+			{
+				printf("skipped %s\n",screencapbinaries[i].name);
+				fflush(NULL);
+				continue;
+			}
+			printf("main i = %d\n",i);
+			fflush(NULL);
+			uint32_t size[12];
+			int a;
+			if (feof(sc) || (a = fread(size,1,3,sc)) != 3)
+			{
+				printf("fread failed a = %d\n",a);
+				fflush(NULL);
+				mypclose(sc);
+				continue;
+			}
+			printf("main2\n");
+			fflush(NULL);
+			scrinfo.xres_virtual = scrinfo.xres = size[0];
+			scrinfo.yres_virtual = scrinfo.yres = size[0];
+			scrinfo.bits_per_pixel = 16;
+			bytespp = scrinfo.bits_per_pixel / 8;
+			scrinfo.red.offset = 11;
+			scrinfo.red.length = 5;
+			scrinfo.green.offset = 5;
+			scrinfo.green.length = 6;
+			scrinfo.blue.offset = 0;
+			scrinfo.blue.length = 5;
+			mypclose(sc);
+			break;
+*/		}
 		if (screencapbinaries[i].name == NULL)
 			screencap = -1;
 		else
@@ -7451,6 +10113,8 @@ int main(int argc, char **argv)
         (void) signal(SIGTERM, signal_handler);
         (void) signal(SIGINT, signal_handler);
 	itoa(buffer,port);
+//        if (mg_set_option(ctx, "ports", buffer) != 1)
+//                error("Error in configurate port.\n");
 	passfile = "passwords.txt";
 	FILE* pf = fopen((dir+passfile).c_str(),"r");
 	if (pf)
@@ -7465,7 +10129,25 @@ int main(int argc, char **argv)
 	chown((dir+passfile).c_str(), info.st_uid, info.st_gid);
 	chmod((dir+passfile).c_str(), S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP);
 	char prot[512];
-	sprintf(prot,(std::string("/favicon.ico=,/flags_=,/javatest=,/stop=,/dyndns=,/reread=,/test=,/sendbroadcast=,/index.html=,/register=,/reganim.gif=,/js/jquery=,/=")+dir+passfile).c_str());
+	sprintf(prot,(std::string("/favicon.ico=,/flags_=,/javatest=,/gpsset=,/stop=,/dyndns=,/reread=,/test=,/sendbroadcast=,/phonegetchatmessage=,/phonewritechatmessage=,/phoneclearchatmessage=,/index.html=,/register=,/reganim.gif=,/js/jquery=,/=")+dir+passfile).c_str());
+//        mg_set_option(ctx, "auth_realm", "Webkey");
+#ifdef __linux__
+//        mg_set_option(ctx, "error_log", "log.txt");
+#endif
+#ifndef __linux__
+//	mg_set_option(ctx, "protect", (std::string("/password=,/gpsset=,/stop=,/dyndns=,/reread=,/test=,/sendbroadcast=,/=")+dir+passfile).c_str());
+//	mg_set_option(ctx, "root",dir.c_str());
+#else
+//	mg_set_option(ctx, "root",dir.c_str());
+#endif
+	struct timeval tv;
+	gettimeofday(&tv,0);
+	srand ( time(NULL)+tv.tv_usec );
+	for (i = 0; i < 10; i++)
+	{
+		upload_random[i] = (char)(rand()%26+97);
+	}
+	upload_random[10] = 0;
 	char strport[16];
 	char strport_ssl[16];
 	char docroot[256];
@@ -7479,6 +10161,8 @@ int main(int argc, char **argv)
 	}
 	else
 	{
+		//temporary
+		//syst("chmod \"a+x\" /data/data/com.webkey/files/openssl");
 		syst((dir+"openssl req -x509 -nodes -days 5650 -newkey rsa:1024 -keyout "+dir+"ssl_cert.pem -out "+dir+"ssl_cert.pem -config "+dir+"ssleay.cnf").c_str());
 		sf = fopen((dir+"ssl_cert.pem").c_str(),"r");
 		if (sf)
@@ -7518,7 +10202,7 @@ int main(int argc, char **argv)
 #endif
 		NULL
 	};
-
+	
 	// check root
 	if (getuid() != 0)
 		error("Not running as root.\n");
@@ -7526,14 +10210,14 @@ int main(int argc, char **argv)
 	if (has_ssl)
 	{
 		printf("SSL is ON\n");
-		if ((ctx = mg_start(token,&event_handler,dir.c_str(),options_ssl)) == NULL) {
+		if ((ctx = mg_start(upload_random,&event_handler,dir.c_str(),options_ssl)) == NULL) {
 			error("Cannot initialize Mongoose context");
 		}
 	}
 	else
 	{
 		printf("SSL is OFF, error generating the key.\n");
-		if ((ctx = mg_start(token,&event_handler,dir.c_str(),options)) == NULL) {
+		if ((ctx = mg_start(upload_random,&event_handler,dir.c_str(),options)) == NULL) {
 			error("Cannot initialize Mongoose context");
 		}
 	}
@@ -7545,7 +10229,7 @@ int main(int argc, char **argv)
 	FILE* auth;
 	if ((auth = fopen((dir+"authkey.txt").c_str(),"w")))
 	{
-		fprintf(auth,"%s",token);
+		fprintf(auth,"%s",upload_random);
 		fclose(auth);
 	}
 	chmod((dir+"authkey.txt").c_str(), S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP);
@@ -7570,12 +10254,51 @@ int main(int argc, char **argv)
 	pthread_mutex_init(&wakelockmutex, NULL);
 	pthread_cond_init(&diffcond,0);
 	pthread_cond_init(&diffstartcond,0);
+//	pthread_mutex_init(&smsmutex,0);
+//	pthread_mutex_init(&contactsmutex,0);
+//	pthread_cond_init(&smscond,0);
+//	pthread_cond_init(&contactscond,0);
+//	admin_password = "";
+	chat_random = time(NULL) + tv.tv_usec;
+	chat_count = 1;
+	loadchat();
 	wakelock = true;	//just to be sure
 	unlock_wakelock(true);
+//	for (i = 0; i < 8; i++)
+//	{
+//		char c[2]; c[1] = 0; c[0] = (char)(rand()%26+97);
+//		admin_password += c;
+//	}
+//	mg_modify_passwords_file(ctx, (dir+passfile).c_str(), "admin", admin_password.c_str(),-1);
+//	mg_modify_passwords_file(ctx, (dir+passfile).c_str(), "admin", admin_password.c_str(),-2);
+	notify.smsalarmed = false;
+	notify.callalarmed = false;
+	notify.lastsmstime = 0;
+	notify.lastcalltime = 0;
+	notify.lastalarm = -1000000;
+	FILE* in = fopen((dir + "notify.txt").c_str(),"r");
+	if (in)
+	{
+		char buff[LINESIZE];
+		if (fgets(buff, LINESIZE-1, in) != NULL)
+			setupnotify(buff);
+		fclose(in);
+	}
+
+
+
+//        printf("Webkey %s started on port(s) [%s], serving directory [%s]\n",
+//            mg_version(),
+//            mg_get_option(ctx, "ports"),
+//            mg_get_option(ctx, "root"));
+
 
 	printf("starting touch...\n");
 	init_touch();
-  fflush(stdout);
+//	printf("starting uinput...\n");
+//	init_uinput();
+//	load_keys();
+        fflush(stdout);
 
 	pthread_t backthread;
 	backserver_parameter par;
@@ -7595,12 +10318,24 @@ int main(int argc, char **argv)
 	__u32 tried = 0;
 	__u32 lastip = 0;
 	up = 0;
+	time_t net_usage_save = 0;
+	//TEMP
+//		init_uinput();
 	while (exit_flag == 0)
 	{
 		i++;
 		d++;
 		up++;
-    sleep(1);
+                sleep(1);
+	//usleep(100000);
+	//
+	//
+//		struct timeval tv;
+//		tv.tv_sec = 0;
+//		tv.tv_usec = 100000;
+//		n = select(NULL,NULL, NULL, NULL, &tv);
+		if (up%20==0)
+			check_notify();
 		if (is_icecreamsandwich && up > shutdownkey_up && uinput_fd != -1)
 		{
 			pthread_mutex_lock(&uinputmutex);
@@ -7611,13 +10346,35 @@ int main(int argc, char **argv)
 		if (i==10)
 		{
 			unlock_wakelock(false);
+//			set_blink(1,500,200);
+//			vibrator_on(1500);
+
 			i = 0;
+			if (gps_active)
+			{
+				gettimeofday(&tv,0);
+				if (tv.tv_sec > last_gps_time + 30)
+				{
+					syst("/system/bin/am broadcast -a \"webkey.intent.action.GPS.STOP\" -n \"com.webkey/.GPS\"");
+					gps_active = false;
+				}
+			}
 		}
-		struct timeval tv;
+		//__android_log_print(ANDROID_LOG_INFO,"Webkey C++","debug: d = %d, dyndns = %d, host = %s, dyndns_base64 = %s",d,dyndns,dyndns_host.c_str(),dyndns_base64.c_str());
+		if (d==30 || d == 60)
+		{
+			pthread_mutex_lock(&chatmutex);
+			pthread_cond_broadcast(&chatcond);
+			pthread_mutex_unlock(&chatmutex);
+		}
 		if (d==60)
 		{
 			d=0;
 			gettimeofday(&tv,0);
+			if (net_usage_save+10*60 < tv.tv_sec)
+			{
+				net_usage_save = tv.tv_sec;
+			}
 			int q;
 			for (q = 0; q < sessions.size(); q++)
 			{
@@ -7634,19 +10391,33 @@ int main(int argc, char **argv)
 			}
 			backdecrease(); //decrease the number of connection to the server
 			__u32 ip = ipaddress();
+//			printf("IP ADDRESS: %d\n",ip);
+//			printf("LAST IP ADDRESS: %d\n",lastip);
+//			printf("SERVER_CHANGES before check: %d\n",server_changes);
 			if (ip!=lastip)
 				server_changes++;
+//			printf("SERVER_CHANGES before after: %d\n",server_changes);
 			lastip = ip;
 			if(dyndns)
 			{
+				//__android_log_print(ANDROID_LOG_INFO,"Webkey C++","debug: dyndns is true");
+				//in_addr r;
+				//r.s_addr = ip;
+				//__android_log_print(ANDROID_LOG_INFO,"Webkey C++","debug: ip address = %s",inet_ntoa(r));
+				//r.s_addr = dyndns_last_updated_ip;
+				//__android_log_print(ANDROID_LOG_INFO,"Webkey C++","debug: dyndns_last_updated_ip = %s",inet_ntoa(r));
 				if (ip && ip != dyndns_last_updated_ip)
 				{
+					//__android_log_print(ANDROID_LOG_INFO,"Webkey C++","debug: updateing, u = %d",u);
+					//r.s_addr = tried;
+					//__android_log_print(ANDROID_LOG_INFO,"Webkey C++","debug: tried = %s",inet_ntoa(r));
 					u++;
 					if (tried != ip || u==10) //tries to update every 10 mins
 					{
 						tried = ip;
 						u = 0;
 						std::string ret = update_dyndns(ip);
+//						printf("%s\n",ret.c_str());
 #ifdef ANDROID
 						__android_log_print(ANDROID_LOG_INFO,"Webkey C++","debug: ret = %s",ret.c_str());
 #endif
@@ -7658,6 +10429,11 @@ int main(int argc, char **argv)
 	pthread_mutex_lock(&diffmutex);
 	pthread_cond_broadcast(&diffstartcond);
 	pthread_mutex_unlock(&diffmutex);
+	pthread_mutex_lock(&chatmutex);
+	pthread_cond_broadcast(&chatcond);
+	pthread_mutex_unlock(&chatmutex);
+	if (gps_active)
+		syst("/system/bin/am broadcast -a \"webkey.intent.action.GPS.STOP\" -n \"com.webkey/.GPS\"");
         (void) printf("Exiting on signal %d, "
             "waiting for all threads to finish...", exit_flag);
         fflush(stdout);

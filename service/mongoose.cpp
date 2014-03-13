@@ -19,15 +19,13 @@
 // THE SOFTWARE.
 
 //#define mylog(x,fmt) {FILE* __f = fopen("/data/data/com.webkey/log.txt","a"); if (__f) {fprintf(__f,"%s:%u (%d,%d) %s="fmt"\n",__FILE__, __LINE__, pthread_self(), time(NULL), #x,x); fclose(__f); } printf("%s:%u (%d,%d) %s="fmt"\n",__FILE__, __LINE__, pthread_self(), time(NULL), #x,x);}
-#define mylog(x,fmt)
+#define mylog(x,fmt) 
 #if defined(_WIN32)
 #define _CRT_SECURE_NO_WARNINGS // Disable deprecation warning in VS2005
 #else
 #define _XOPEN_SOURCE 600 // For flockfile() on Linux
 #define _LARGEFILE_SOURCE // Enable 64-bit file offsets
 #endif
-
-#define ACTIVITY_TIMEOUT 600
 
 #include "webkey.h"
 
@@ -234,7 +232,7 @@ typedef int SOCKET;
 //webkey
 std::string logfile;
 char serial_number[PROP_VALUE_MAX];
-static char* token = NULL;
+static char* upload_random = NULL;
 static long reject_next_request = -1;
 static time_t reject_first_time = 0;
 static char mac[256];
@@ -327,7 +325,7 @@ static void macaddress()
 			close(s);
 			return;
 		}
-		if ((c.ifr_flags & IFF_UP) && ((c.ifr_flags & IFF_LOOPBACK) == 0))
+		if ((c.ifr_flags & IFF_UP) && ((c.ifr_flags & IFF_LOOPBACK) == 0)) 
 		{
 			__u32 t = ((struct sockaddr_in *)&r->ifr_addr)->sin_addr.s_addr;
 			char *m;
@@ -626,9 +624,6 @@ struct mg_context {
   int sq_tail;               // Tail of the socket queue
   pthread_cond_t sq_full;    // Singaled when socket is produced
   pthread_cond_t sq_empty;   // Signaled when socket is consumed
-
-  int last_activity;
-  pthread_mutex_t last_activity_mutex;
 };
 
 struct mg_connection {
@@ -1615,7 +1610,7 @@ static size_t url_decode(const char *src, size_t src_len, char *dst,
     }
   }
 
-  dst[j] = '\0';
+  dst[j] = '\0'; 
 
   return j;
 }*/
@@ -3478,11 +3473,16 @@ static void handle_request(struct mg_connection *conn) {
   int uri_len;
   struct mgstat st;
 
+  //printf("\n---------\n");
+  //fflush(NULL);
+//Webkey
 	if (conn->request_info.remote_ip == 2130706433)
 	{
 		const char* h = get_header(&(conn->request_info),"Host"); //because of /system/etc/hosts
 		if (h && strncmp(h,"localhost",9)!=0)
 		{
+//		printf("host: %s\n",h);
+//		fflush(NULL);
 			int i = 0;
 			while(h[i])
 			{
@@ -3494,45 +3494,119 @@ static void handle_request(struct mg_connection *conn) {
 				i++;
 			}
 		}
+//		else
+//			printf("no host\n");
 	}
 
-  printf("ri->uri is [%s]", ri->uri);
+mylog(ri->uri,"%s");
 	bool ajxp_session = false;
 	if ((conn->request_info.query_string = strchr(ri->uri, '?')) != NULL)
 	{
 		* conn->request_info.query_string++ = '\0';
+/*		if (upload_random)
+		{
+			int i = 0;
+			int j;
+			while (ri->query_string[i] && i < 100)
+			{
+				for (j = 0; j < 32; j++)
+					if (ri->query_string[i+j] == 0 || ri->query_string[i+j] != upload_random[j])
+						break;
+				if (j == 32)
+				{
+					ajxp_session = true;
+//					printf("auth\n");
+					break;
+				}
+				i++;
+			}
+		}
+*/
+	//	printf("%s\n",ri->query_string);
 	}
 
+//Webkey
+  
   bool auth = check_authorization(conn, ri->uri);
-  // if (strcmp(ri->uri,"/index.html")==0 || strcmp(ri->uri,"/")==0)
-	 //  auth = true;
+  if (strcmp(ri->uri,"/login")==0)
+  {
+	  if (reject_next_request == ri->remote_ip)
+	  {
+		  struct timeval tv;
+		  gettimeofday(&tv,0);
+		  if (reject_first_time == 0)
+		  {
+			  reject_first_time = tv.tv_sec;
+			  send_authorization_request(conn);
+			  return;
+		  }
+		  else
+		  {
+			  if (reject_first_time + 3 <= tv.tv_sec)
+			  {
+				  reject_next_request = 0;
+				  reject_first_time = 0;
+			  }
+			  else
+			  {
+				  send_authorization_request(conn);
+				  return;
+			  }
+		  }
+	  }
+	  else
+		  reject_next_request = -1;
+  }
+  if (strcmp(ri->uri,"/logout")==0)
+  {
+	  reject_next_request = ri->remote_ip;
+	  mg_printf(conn,"HTTP/1.1 200 OK\r\nCache-Control: no-store, no-cache, must-revalidate\r\nCache-Control: post-check=0, pre-check=0\r\nPragma: no-cache\r\nContent-Type: text/html; charset=utf-8\r\nConnection: close\r\n\r\n<html><head><meta http-equiv=\"refresh\" content=\"1;url=login\"></head><body>Warning: The only safe way to log out from a HTTP session is to close the browser. I do my best to make your browser forget your username and password, but there is no standard HTTP method for that. Redirecting...</body></html>");
+	  return;
+  }
+  if (strcmp(ri->uri,"/index.html")==0 || strcmp(ri->uri,"/")==0)
+	  auth = true;
 
-// #ifndef ANDROID
-//   ri->remote_user = (char*)malloc(12);
-//   strcpy(ri->remote_user,"admin"); //only for testing on PC
-//   ri->permissions = -1;
-// #endif
+/*  if (auth && strcmp(ri->remote_user,"logout")==0)
+  {
+	  if (strcmp(ri->uri,"/login")==0)
+	  {
+		  send_authorization_request(conn);
+	  }
+	  else
+		  mg_printf(conn,"HTTP/1.1 200 OK\r\nCache-Control: no-store, no-cache, must-revalidate\r\nCache-Control: post-check=0, pre-check=0\r\nPragma: no-cache\r\nContent-Type: text/html; charset=utf-8\r\nConnection: close\r\n\r\n<html><head><meta http-equiv=\"refresh\" content=\"3;url=login\"></head><body>Warning: The only safe way to log out from a HTTP session is to close the browser. I do my best to make your browser forget your username and password, but there is no standard HTTP method for that. Redirecting in 3 seconds...</body></html>");
+	  return;
+  }
+*/
+
+
+#ifndef ANDROID
+  ri->remote_user = (char*)malloc(12);
+  strcpy(ri->remote_user,"admin"); //only for testing on PC
+  ri->permissions = -1;
+#endif
+
 
   if (ri->remote_user && strcmp(ri->remote_user,"JAVA_CLIENT") == 0) //are you kidding me? Choose other name.
   	ri->remote_user[0] = 0;
-  if (token) printf("TOKEN [%s]\n", token);
-  printf("URI1 [%s]\n", ri->uri);
-  if (token && strncmp(ri->uri+1,token,strlen(token)) == 0)
+
+  //TEMP
+//  printf("%d %s\n",auth,ri->remote_user);
+
+  if (upload_random && strncmp(ri->uri+1,upload_random,10) == 0)
   {
 	  int i = 1;
-	  while (ri->uri[i+strlen(token)])
+	  while (ri->uri[i+10])
 	  {
-		  ri->uri[i] = ri->uri[i+strlen(token)];
+		  ri->uri[i] = ri->uri[i+10];
 		  i++;
 	  }
 	  ri->uri[i] = 0;
-    printf("URI2 [%s]\n", ri->uri);
 	  auth=true;
 	  if (ri->remote_user)
 		free(ri->remote_user);
 	  ri->remote_user = (char*)malloc(12);
 	  if(ri->remote_user)
-		strcpy(ri->remote_user,"JAVA_CLIENT");
+		strcpy(ri->remote_user,"JAVA_CLIENT");	  
 	  printf("JAVA_CLIENT, %s\n",ri->uri);
   }
   else
@@ -3542,10 +3616,14 @@ static void handle_request(struct mg_connection *conn) {
 		  ri->remote_user = (char*)malloc(1);
 		  ri->remote_user[0] = 0;
 	  }
+//	  printf("NO JAVA_CLIENT\n");
   }
+
+//	printf("%s\n",ri->uri);
   uri_len = strlen(ri->uri);
   (void) url_decode(ri->uri, uri_len, ri->uri, uri_len + 1, 0);
   remove_double_dots_and_double_slashes(ri->uri);
+//  convert_uri_to_file_name(conn, ri->uri, path, sizeof(path));
   convert_uri_to_file_name(conn, ri, path, sizeof(path));
 
   char cookie[PROP_VALUE_MAX];//PROP_VALUE_MAX == 92;
@@ -3559,10 +3637,10 @@ static void handle_request(struct mg_connection *conn) {
   else
 	  ri->language[0] = 0;
 
-
+	  
   DEBUG_TRACE(("%s", ri->uri));
-  if (!auth) {
-    send_http_error(conn, 403, "Forbidden", "Access Forbidden");
+  if (ajxp_session == false && !auth) {
+    send_authorization_request(conn);
   } else if (strstr(path, PASSWORDS_FILE_NAME)) {
     // Do not allow to view passwords files
     send_http_error(conn, 403, "Forbidden", "Access Forbidden");
@@ -3570,7 +3648,24 @@ static void handle_request(struct mg_connection *conn) {
     // Do nothing, callback has served the request
   } else if (conn->ctx->config[DOCUMENT_ROOT] == NULL) {
     send_http_error(conn, 404, "Not Found", "Not Found");
-  } else if (mg_stat(path, &st) != 0) {
+  }
+//  else if ((!strcmp(ri->request_method, "PUT") ||
+//        !strcmp(ri->request_method, "DELETE")) &&
+//      (conn->ctx->config[PUT_DELETE_PASSWORDS_FILE] == NULL ||
+//       !is_authorized_for_put(conn))) {
+//    send_authorization_request(conn);
+//  } else if (!strcmp(ri->request_method, "PUT")) {
+//    put_file(conn, path);
+//  } else if (!strcmp(ri->request_method, "DELETE")) {
+//    if (mg_remove(path) == 0) {
+//      send_http_error(conn, 200, "OK", "");
+//    } 
+//    else {
+//      send_http_error(conn, 500, http_500_error, "remove(%s): %s", path,
+//                      strerror(ERRNO));
+//    }
+//  }
+  else if (mg_stat(path, &st) != 0) {
     send_http_error(conn, 404, "Not Found", "%s", "File not found");
   } else if (st.is_directory && ri->uri[uri_len - 1] != '/') {
     (void) mg_printf(conn,
@@ -4075,7 +4170,7 @@ static void handle_proxy_request(struct mg_connection *conn) {
     }
     conn->peer->client.is_ssl = is_ssl;
   }
-
+  
   // Forward client's request to the target
   mg_printf(conn->peer, "%s %s HTTP/%s\r\n", ri->request_method, ri->uri + len,
             ri->http_version);
@@ -4284,9 +4379,6 @@ static void master_thread(struct mg_context *ctx) {
   struct socket *sp;
   int max_fd;
 
-  pthread_mutex_lock(&ctx->last_activity_mutex);
-  ctx->last_activity = time(0);
-  pthread_mutex_unlock(&ctx->last_activity_mutex);
   while (ctx->stop_flag == 0) {
     FD_ZERO(&read_set);
     max_fd = -1;
@@ -4309,23 +4401,10 @@ static void master_thread(struct mg_context *ctx) {
     } else {
       for (sp = ctx->listening_sockets; sp != NULL; sp = sp->next) {
         if (FD_ISSET(sp->sock, &read_set)) {
-          pthread_mutex_lock(&ctx->last_activity_mutex);
-          ctx->last_activity = time(0);
-          pthread_mutex_unlock(&ctx->last_activity_mutex);
           accept_new_connection(sp, ctx);
         }
       }
     }
-    pthread_mutex_lock(&ctx->last_activity_mutex);
-    if ( time(0) - ctx->last_activity > ACTIVITY_TIMEOUT ) {
-      printf("stopping worker do to INACTIVITY.\n");
-      ctx->stop_flag = 1;
-      // this is ugly. But this whole program is uglier.
-      // makes no sense to fix this. A rewrite is needed
-      // this will work for now.
-      exit(1);
-    }
-    pthread_mutex_unlock(&ctx->last_activity_mutex);
   }
   DEBUG_TRACE(("stopping workers"));
 
@@ -4344,7 +4423,6 @@ static void master_thread(struct mg_context *ctx) {
 
   // All threads exited, no sync is needed. Destroy mutex and condvars
   (void) pthread_mutex_destroy(&ctx->mutex);
-  (void) pthread_mutex_destroy(&ctx->last_activity_mutex);
   (void) pthread_cond_destroy(&ctx->cond);
   (void) pthread_cond_destroy(&ctx->sq_empty);
   (void) pthread_cond_destroy(&ctx->sq_full);
@@ -4432,7 +4510,7 @@ void mg_stop(struct mg_context *ctx) {
 }
 
 struct mg_context *mg_start(char* upload_r, mg_callback_t user_callback, const char* webkey_dir, const char **options) {
-  token = upload_r;
+  upload_random = upload_r;
   logfile = webkey_dir;
   logfile += "/log.txt";
 //  mac[0] = 0;
@@ -4509,7 +4587,6 @@ __system_property_get("ro.serialno",serial_number);
 #endif // !_WIN32
 
   (void) pthread_mutex_init(&ctx->mutex, NULL);
-  (void) pthread_mutex_init(&ctx->last_activity_mutex, NULL);
   (void) pthread_cond_init(&ctx->cond, NULL);
   (void) pthread_cond_init(&ctx->sq_empty, NULL);
   (void) pthread_cond_init(&ctx->sq_full, NULL);
@@ -4715,7 +4792,7 @@ my_send_directory(struct mg_connection *conn, const char *dir)
 		convertxml(buff,path);
 		(void) mg_write(conn, buff, mystrlen(buff));
 		(void) mg_printf(conn,"\" icon=");
-
+				
 		if (files[p]->stat.is_directory)
 			(void) mg_printf(conn, "\"folder.png\" mimestring=\"Directory\" is_image=\"0\"");
 		else
@@ -4918,7 +4995,7 @@ backward_connection(struct mg_context *ctx,int s,char** server_username, char** 
 				}
 				return;
 			}
-		       	else
+		       	else 
 			{
 				backporterror=0;
 				conn.data_len += n;
@@ -5037,7 +5114,7 @@ void* backserver(void* par)
 	// int PORT2 = 80;
 	int port = 9935;
 	char serveraddress[128];
-	// __u32 fallbackip = 0;
+	// __u32 fallbackip = 0; 
 	// fallbackip = 1745908944; //Our server's address
 	// serverip = 1745908944; //Our server's address, no DNS resolving
 	printf("using on4today.com\n");
@@ -5095,7 +5172,7 @@ void* backserver(void* par)
 		mylog(*server_random,"%s");
 		mylog(*server,"%d");
 		mylog(backstop,"%d");
-
+		
 		if (ctx->ssl_ctx_client == NULL) {
 			printf("Creating SSL Client context\n");
 
@@ -5205,7 +5282,7 @@ void* backserver(void* par)
 			// 	continue;
 			// }
 		}
-
+		
 //		printf("connected to server %d, %d at port %d\n",backnumconn,backactmaxconn,port);
 		pthread_t backthread;
 		backdata *param = new backdata;

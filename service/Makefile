@@ -8,7 +8,7 @@ RUNLIB := ${TOOLCHAIN_PATH}/arm-linux-androideabi-ranlib
 CFLAGS := -I $(ANDROID_NDK)/platforms/android-3/arch-arm/usr/include/ -I $(ANDROID_NDK)/sources/cxx-stl/stlport/stlport/
 CFLAGS += -Wno-write-strings -mthumb -DANDROID -DNOCRYPT -DUSE_FILE32API 
 CFLAGS += -L $(ANDROID_NDK)/platforms/android-3/arch-arm/usr/lib/ 
-CFLAGS += -lc -llog -lz -O2 --sysroot=$(ANDROID_NDK)/platforms/android-3/arch-arm/
+CFLAGS += -lc -llog -lz -O2
 CFLAGS += -fno-exceptions -fno-short-enums
 #CFLAGS += -nostdlib
 
@@ -97,4 +97,4 @@ install:
 #	@echo The webkey binary was copied into to the assets folder.
 
 clean:
-	 rm -f webkey.o suinput.o base64.o mongoose.o libpng/libpng-1.2.42/*.o l libjpeg/jpeg-6b/*.o libjpeg.a libpng12.a webkey
+	 rm -f webkey.o suinput.o base64.o mongoose.o sqlite/sqlite3.o libpng/libpng-1.2.42/*.o l libjpeg/jpeg-6b/*.o libjpeg.a libpng12.a sqlite3.a webkey
