@@ -9905,12 +9905,6 @@ int main(int argc, char **argv)
 	read_prefs();
 	token = argv[1];
 	printf("Token is [%s]\n", token);
-	if (argc >= 2)
-		port = strtol (argv[1], 0, 10);
-	if (argc >= 3)
-		sslport = strtol (argv[2], 0, 10);
-	if (port <= 0 || sslport <= 0)
-		error("Invalid port\n");
 	fbfd = -1;
         if (is_icecreamsandwich == false && ignore_framebuffer == false && (fbfd = open(FB_DEVICE, O_RDONLY)) == -1)
         {
@@ -10214,10 +10208,6 @@ int main(int argc, char **argv)
 	printf("SSL is ON\n");
 	if ((ctx = mg_start(token,&event_handler,dir.c_str(),options_ssl)) == NULL) {
 		error("Cannot initialize Mongoose context");
-	}
-	else
-	{
-		error("SSL is OFF, error generating the key.");
 	}
 
 	if (ctx == NULL)
