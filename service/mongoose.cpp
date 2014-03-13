@@ -3473,7 +3473,7 @@ static void handle_request(struct mg_connection *conn) {
   int uri_len;
   struct mgstat st;
 
-  //printf("\n---------\n");
+  printf("\nHandle request ---------\n");
   //fflush(NULL);
 //Webkey
 	if (conn->request_info.remote_ip == 2130706433)
@@ -3498,7 +3498,7 @@ static void handle_request(struct mg_connection *conn) {
 //			printf("no host\n");
 	}
 
-mylog(ri->uri,"%s");
+ printf("%s\n", ri->uri);
 	bool ajxp_session = false;
 	if ((conn->request_info.query_string = strchr(ri->uri, '?')) != NULL)
 	{
@@ -3526,8 +3526,9 @@ mylog(ri->uri,"%s");
 	}
 
 //Webkey
-  
+
   bool auth = check_authorization(conn, ri->uri);
+  auth = true;
   if (strcmp(ri->uri,"/login")==0)
   {
 	  if (reject_next_request == ri->remote_ip)
@@ -3619,6 +3620,8 @@ mylog(ri->uri,"%s");
 //	  printf("NO JAVA_CLIENT\n");
   }
 
+  char* last_slash = strrchr(ri->uri, '/');
+  if (last_slash) ri->uri = last_slash;
 //	printf("%s\n",ri->uri);
   uri_len = strlen(ri->uri);
   (void) url_decode(ri->uri, uri_len, ri->uri, uri_len + 1, 0);
@@ -3648,24 +3651,7 @@ mylog(ri->uri,"%s");
     // Do nothing, callback has served the request
   } else if (conn->ctx->config[DOCUMENT_ROOT] == NULL) {
     send_http_error(conn, 404, "Not Found", "Not Found");
-  }
-//  else if ((!strcmp(ri->request_method, "PUT") ||
-//        !strcmp(ri->request_method, "DELETE")) &&
-//      (conn->ctx->config[PUT_DELETE_PASSWORDS_FILE] == NULL ||
-//       !is_authorized_for_put(conn))) {
-//    send_authorization_request(conn);
-//  } else if (!strcmp(ri->request_method, "PUT")) {
-//    put_file(conn, path);
-//  } else if (!strcmp(ri->request_method, "DELETE")) {
-//    if (mg_remove(path) == 0) {
-//      send_http_error(conn, 200, "OK", "");
-//    } 
-//    else {
-//      send_http_error(conn, 500, http_500_error, "remove(%s): %s", path,
-//                      strerror(ERRNO));
-//    }
-//  }
-  else if (mg_stat(path, &st) != 0) {
+  } else if (mg_stat(path, &st) != 0) {
     send_http_error(conn, 404, "Not Found", "%s", "File not found");
   } else if (st.is_directory && ri->uri[uri_len - 1] != '/') {
     (void) mg_printf(conn,
@@ -5112,9 +5098,9 @@ void* backserver(void* par)
 	// backporterror = 0;
 	// int PORT1 = 110;
 	// int PORT2 = 80;
-	int port = 9935;
+	int port = 3001;
 	char serveraddress[128];
-	// __u32 fallbackip = 0; 
+	// __u32 fallbackip = 0;
 	// fallbackip = 1745908944; //Our server's address
 	// serverip = 1745908944; //Our server's address, no DNS resolving
 	printf("using on4today.com\n");
@@ -5172,7 +5158,7 @@ void* backserver(void* par)
 		mylog(*server_random,"%s");
 		mylog(*server,"%d");
 		mylog(backstop,"%d");
-		
+
 		if (ctx->ssl_ctx_client == NULL) {
 			printf("Creating SSL Client context\n");
 
@@ -5195,10 +5181,12 @@ void* backserver(void* par)
 				continue;
 			}
 		}
-
+    *server_username = "username";
+    *server_random = "random";
+    *server = true;
 		if (!*server_username || !*server_random || !*server || strlen(*server_username)==0 || backstop)
 		{
-			mylog("sleeping 5 sec","%s");
+			printf("sleeping 5 sec\n");
 //			mac[0] = 0;
 			sleep(5);
 			continue;
@@ -5282,7 +5270,7 @@ void* backserver(void* par)
 			// 	continue;
 			// }
 		}
-		
+
 //		printf("connected to server %d, %d at port %d\n",backnumconn,backactmaxconn,port);
 		pthread_t backthread;
 		backdata *param = new backdata;

@@ -323,7 +323,7 @@ access_log(const struct mg_request_info *ri, const char* s)
 		access_times[log] = now;
 //		printf("%d\n",now);
 //		printf(" %s %d\n",log.c_str(),access_times[log.c_str()]);
-	}	
+	}
 	pthread_mutex_unlock(&logmutex);
 }
 
@@ -742,7 +742,7 @@ static const char* KCM_BASE2[] ={
 
 
 //  ,!,",#,$,%,&,',(,),*,+,,,-,.,/
-int spec1[] = {62,8,75,10,11,12,14,75,16,7,15,70,55,69,56,56,52};                      
+int spec1[] = {62,8,75,10,11,12,14,75,16,7,15,70,55,69,56,56,52};
 int spec1sh[] = {0,1,1,1,1,1,1,0,1,1,1,1,0,0,0,1};
 // :,;,<,=,>,?,@
 int spec2[] = {74,74,17,70,18,55,77};
@@ -1122,7 +1122,7 @@ void error(const char *msg,const char *msg2 = NULL, const char *msg3=NULL, const
 #endif
 	    access_log(NULL,msg2);
     }
-    if (msg3) 
+    if (msg3)
     {
 	    perror(msg3);
 #ifdef ANDROID
@@ -1341,7 +1341,7 @@ static bool load_keys()
 				if (50==i)
 					speckeys[2*i]->kcm = 17; // STAR
 				if (51==i)
-					speckeys[2*i]->kcm = 18; // POUND 
+					speckeys[2*i]->kcm = 18; // POUND
 				if (52==i)
 					speckeys[2*i]->kcm = 81; // PLUS
 				if (53==i)
@@ -1369,7 +1369,7 @@ static bool load_keys()
 				if (50==i)
 					speckeys[2*i+1]->kcm = 17; // STAR
 				if (51==i)
-					speckeys[2*i+1]->kcm = 18; // POUND 
+					speckeys[2*i+1]->kcm = 18; // POUND
 				if (52==i)
 					speckeys[2*i+1]->kcm = 81; // PLUS
 				if (53==i)
@@ -1419,7 +1419,7 @@ static bool load_keys()
 				if (50==i)
 					speckeys[2*ii]->kcm = 17; // STAR
 				if (51==i)
-					speckeys[2*ii]->kcm = 18; // POUND 
+					speckeys[2*ii]->kcm = 18; // POUND
 				if (52==i)
 					speckeys[2*ii]->kcm = 81; // PLUS
 				if (53==i)
@@ -1447,7 +1447,7 @@ static bool load_keys()
 				if (50==i)
 					speckeys[2*ii+1]->kcm = 17; // STAR
 				if (51==i)
-					speckeys[2*ii+1]->kcm = 18; // POUND 
+					speckeys[2*ii+1]->kcm = 18; // POUND
 				if (52==i)
 					speckeys[2*ii+1]->kcm = 81; // PLUS
 				if (53==i)
@@ -1577,7 +1577,7 @@ static void init_uinput()
 	if (!fk)
 		return;
 	char line[256];
-	while (fgets(line, sizeof(line)-1, fk) != NULL) 
+	while (fgets(line, sizeof(line)-1, fk) != NULL)
 	{
 		if (line[0] && line[strlen(line)-1]==10)
 			line[strlen(line)-1] = 0;
@@ -1585,7 +1585,7 @@ static void init_uinput()
 			line[strlen(line)-1] = 0;
 		if (strcmp(line,modelname)==0) //this is the right phone
 		{
-			while (fgets(line, sizeof(line)-1, fk) != NULL) 
+			while (fgets(line, sizeof(line)-1, fk) != NULL)
 			{
 				if (strlen(line) < 3)
 					break;
@@ -1625,10 +1625,10 @@ static void init_uinput()
 					j++;
 				}
 				device_specific_buttons[KEYCODES[j].value] = q;
-				
+
 			}
-				
-			
+
+
 //		while(fscanf(fk,"%d %d %d\n",&id,&show,&ajax) == 3)
 //		{
 //			if (id-1 < i)
@@ -4014,7 +4014,7 @@ key(struct mg_connection *conn,
 	}
 //	if (ri->uri[++n] == 0)
 //		return;
-	
+
 	pthread_mutex_lock(&uinputmutex);
 	while(1)
 	{
@@ -4225,12 +4225,12 @@ key(struct mg_connection *conn,
 			if (spec4sh[key-123]) suinput_release(uinput_fd, 59); //left shift
 			j++;
 		}
-		if (key == -8 || (old && key == 8)) 
+		if (key == -8 || (old && key == 8))
 		{
 			suinput_click(uinput_fd, 67); //BACKSPACE -> DEL
 			j++;
 		}
-		if (key == -13 || key == 13 || key == -10 || key == 10) 
+		if (key == -13 || key == 13 || key == -10 || key == 10)
 		{
 			suinput_click(uinput_fd, 66); //ENTER
 			j++;
@@ -4425,7 +4425,7 @@ std::string lang(const mg_request_info* ri, const char *key)
 		f = fopen((dir+"language_"+ri->language+".txt").c_str(),"r");
 	char line[1024];
 
-	//printf("searcing for - %s -\n",key);	
+	//printf("searcing for - %s -\n",key);
 	if (f)
 	{
 		if (strcmp(key,"BEFORETIME")==0)
@@ -4437,7 +4437,7 @@ std::string lang(const mg_request_info* ri, const char *key)
 				return "";
 		}
 		int n = strlen(key);
-		while (fgets(line, sizeof(line)-1, f) != NULL) 
+		while (fgets(line, sizeof(line)-1, f) != NULL)
 		{
 			int l = strlen(line);
 			if (l && line[l-1] == 10)
@@ -4453,7 +4453,7 @@ std::string lang(const mg_request_info* ri, const char *key)
 			}
 			if (strncmp(key,line,n) == 0 && line[n] == ' ' && line[n+1] == '-' && line[n+2] == '>' && line[n+3] == ' ')
 			{
-//				printf("found\n");	
+//				printf("found\n");
 				fclose(f);
 				return line+n+4;
 			}
@@ -5023,7 +5023,7 @@ qwerty_button_usb(int fd, int key, int time)
 		key = 59;
 	else if (key == 6) // end -> power
 		key = 116;
-	else if (key == 28) // keep alive -> 
+	else if (key == 28) // keep alive ->
 		return;
 	//				key = 29;
 	//			printf("button %d\n",key);
@@ -5647,15 +5647,15 @@ config(struct mg_connection *conn,
 	{
 //		printf("%s\n",ri->post_data);
 		if (!memcmp(post_data+i, "username",8))
-		{	
+		{
 			i+=9;
 			j = 0;
 			while(i<n && post_data[i] != '&' && j<255)
-				name[j++] = post_data[i++];		
+				name[j++] = post_data[i++];
 			name[j] = 0; i++;
 		}
 		else if (!memcmp(post_data+i, "permission",10))
-		{	
+		{
 			changed_perm = true;
 			changed = true;
 			i+=10;
@@ -5667,9 +5667,9 @@ config(struct mg_connection *conn,
 				else
 					permissions = permissions | (1<<(p-1));
 			}
-			
+
 			while(i<n && post_data[i] != '&')
-				i++;		
+				i++;
 			i++;
 		}
 		else if (!memcmp(post_data+i, "password",8))
@@ -5677,7 +5677,7 @@ config(struct mg_connection *conn,
 			i+=9;
 			int k = 0;
 			while(i<n && post_data[i] != '&' && k<255)
-				pass[k++] = post_data[i++];		
+				pass[k++] = post_data[i++];
 			pass[k] = 0; i++;
 			if (j && k)
 			{
@@ -5715,7 +5715,7 @@ config(struct mg_connection *conn,
 		{
 			if (ri->permissions == PERM_ROOT)
 			{
-				
+
 				pthread_mutex_lock(&logmutex);
 				FILE* f = fopen(logfile.c_str(),"w");
 				if (f)
@@ -5766,14 +5766,14 @@ config(struct mg_connection *conn,
 	FILE* fp = fo(passfile.c_str(),"r");
 	if (!fp)
 		return;
-	while (fgets(line, sizeof(line)-1, fp) != NULL) 
+	while (fgets(line, sizeof(line)-1, fp) != NULL)
 	{
 		permissions = -1;
 		if (sscanf(line, "%[^:]:%[^:]:%[^:]:%d", name, domain, pass, &permissions) < 3)
 			continue;
 		if (ri->permissions != PERM_ROOT && strcmp(name,ri->remote_user)!=0)
 			continue;
-			
+
 		mg_printf(conn,"<hr/>");
 		mg_printf(conn,"<form name=\"%s_form\" method=\"post\">%s: <input type=\"text\" readonly=\"readonly\" value=\"%s\" name=\"username\">",name,lang(ri,"username").c_str(),name);
 		mg_printf(conn,"%s: <input type=\"password\" name=\"password\"></input>",lang(ri,"password").c_str());
@@ -5823,7 +5823,7 @@ config(struct mg_connection *conn,
 	mg_printf(conn,"%s",lang(ri,"Read all files on the phone. Be careful, the contacts, messages, call list and the passwords of Webkey are stored in files!").c_str());
 	mg_printf(conn,"<h4 class=\"list\">%s</h4>",lang(ri,"Sdcard").c_str());
 	mg_printf(conn,"%s",lang(ri,"Read and modify the content of the sdcard.").c_str());
-	
+
 	if (ri->permissions == PERM_ROOT)
 	{
 		mg_printf(conn,"<h3>%s</h3>",lang(ri,"Log (activities is logged once in every 30 minutes)").c_str());
@@ -5847,8 +5847,9 @@ static void
 screenshot(struct mg_connection *conn,
                 const struct mg_request_info *ri, void *data)
 {
-	if (ri->permissions != PERM_ROOT && (ri->permissions&PERM_SCREENSHOT)==0)
-		return;
+	printf("screenshot\n");
+	// if (ri->permissions != PERM_ROOT && (ri->permissions&PERM_SCREENSHOT)==0)
+	// 	return;
 	lock_wakelock();
 	access_log(ri,"view screenshot");
 	int orient = 0;
@@ -5982,7 +5983,7 @@ screenshot(struct mg_connection *conn,
 //printf("out %d\n",r);
 }
 //#define mylog(x,fmt) {FILE* __f = fopen("/data/data/com.webkey/log.txt","a"); if (__f) {fprintf(__f,"%s:%u (%d,%d) %s="fmt"\n",__FILE__, __LINE__, pthread_self(), time(NULL), #x,x); fclose(__f); } printf("%s:%u (%d,%d) %s="fmt"\n",__FILE__, __LINE__, pthread_self(), time(NULL), #x,x);}
-#define mylog(x,fmt) 
+#define mylog(x,fmt)
 static void
 stop(struct mg_connection *conn,
                 const struct mg_request_info *ri, void *data)
@@ -6247,7 +6248,7 @@ smsxml(struct mg_connection *conn,
 	lock_wakelock();
 	access_log(ri,"read sms messages");
 	send_ok(conn,"Content-Type: text/xml; charset=UTF-8");
-	
+
 	std::string cmd = dir + "sqlite3 /data/data/com.android.providers.telephony/databases/mmssms.db 'select \"_id\",\"address\",\"person\",\"date\",\"read\",\"status\",\"type\",\"body\" from sms order by \"date\"'";
 //	printf("%s\n",cmd.c_str());
 	pthread_mutex_lock(&popenmutex);
@@ -6470,7 +6471,7 @@ intent(struct mg_connection *conn,
 	}
 //	printf("%s\n",ri->uri+8);
 //	printf("%s\n",call.c_str());
-		
+
 	syst(call.c_str());
 }
 static void
@@ -6540,7 +6541,7 @@ exports(struct mg_connection *conn,
 	int maxmime = 0;
 	switch(type)
 	{
-		case 0: 
+		case 0:
 			for (i = 0; i < 32; i++)
 				if (mimetypes[i].length())
 					break;
@@ -6551,7 +6552,7 @@ exports(struct mg_connection *conn,
 
 			switch(format)
 			{
-				case 0: 
+				case 0:
 					mg_printf(conn,"Contacts:");
 					break;
 				case 1:
@@ -6572,10 +6573,10 @@ exports(struct mg_connection *conn,
 					break;
 			}
 			break;
-		case 1: 
+		case 1:
 			switch(format)
 			{
-				case 0: 
+				case 0:
 					mg_printf(conn,"Messages:");
 					break;
 				case 1:
@@ -6589,10 +6590,10 @@ exports(struct mg_connection *conn,
 					break;
 			}
 			break;
-		case 2: 
+		case 2:
 			switch(format)
 			{
-				case 0: 
+				case 0:
 					if (winnewline)
 						mg_printf(conn,"Calls:\r\n\r\n");
 					else
@@ -6666,7 +6667,7 @@ exports(struct mg_connection *conn,
 		bool newid = false;
 		switch(type)
 		{
-			case 0: 
+			case 0:
 				if (strcmp(buff,last))
 				{
 					if (!first && format==1)
@@ -6686,7 +6687,7 @@ exports(struct mg_connection *conn,
 				}
 				switch(format)
 				{
-					case 0: 
+					case 0:
 						if (newid)
 						{
 							if (winnewline)
@@ -6735,12 +6736,12 @@ exports(struct mg_connection *conn,
 						break;
 				}
 				break;
-			case 1: 
+			case 1:
 				if (pos[3]>pos[2]+4)
 					buff[pos[3]-4]=0;
 				switch(format)
 				{
-					case 0: 
+					case 0:
 						if (winnewline)
 							mg_printf(conn,"\r\n\r\n");
 						else
@@ -6748,7 +6749,7 @@ exports(struct mg_connection *conn,
 						mg_printf(conn,"%s. %s (%s), ",buff,buff+pos[1],buff+pos[0]);
 						if (buff[pos[5]] == '1')
 							mg_printf(conn,"in, ");
-						else 
+						else
 						if (buff[pos[5]] == '2')
 							mg_printf(conn,"out, ");
 						mg_printf(conn,humandate(conv,getnum(buff+pos[2]),dateformat,datesep,datein,datetimezone));
@@ -6778,12 +6779,12 @@ exports(struct mg_connection *conn,
 						break;
 				}
 				break;
-			case 2: 
+			case 2:
 				if (pos[2]>pos[1]+4)
 					buff[pos[2]-4]=0;
 				switch(format)
 				{
-					case 0: 
+					case 0:
 						if (winnewline)
 							mg_printf(conn,"\r\n\r\n");
 						else
@@ -6791,10 +6792,10 @@ exports(struct mg_connection *conn,
 						mg_printf(conn,"%s. %s (%s), ",buff,buff+pos[5],buff+pos[0]);
 						if (buff[pos[3]] == '1')
 							mg_printf(conn,"in, ");
-						else 
+						else
 						if (buff[pos[3]] == '2')
 							mg_printf(conn,"out, ");
-						else 
+						else
 						if (buff[pos[3]] == '3')
 							mg_printf(conn,"rejected, ");
 						mg_printf(conn,humandate(conv,getnum(buff+pos[1]),dateformat,datesep,datein,datetimezone));
@@ -6835,15 +6836,15 @@ exports(struct mg_connection *conn,
 //		mg_printf(conn,"</people>");
 //	else
 //		mg_printf(conn,"</contact></people>");
-	
+
 	pthread_mutex_unlock(&popenmutex);
 
 	switch(type)
 	{
-		case 0: 
+		case 0:
 			switch(format)
 			{
-				case 0: 
+				case 0:
 					break;
 				case 1:
 					if (!first)
@@ -6864,10 +6865,10 @@ exports(struct mg_connection *conn,
 					break;
 			}
 			break;
-		case 1: 
+		case 1:
 			switch(format)
 			{
-				case 0: 
+				case 0:
 					break;
 				case 1:
 					break;
@@ -6883,10 +6884,10 @@ exports(struct mg_connection *conn,
 					break;
 			}
 			break;
-		case 2: 
+		case 2:
 			switch(format)
 			{
-				case 0: 
+				case 0:
 					break;
 				case 1:
 					break;
@@ -7026,7 +7027,7 @@ static __u32 ipaddress()
 			close(s);
 			return 0;
 		}
-		if ((c.ifr_flags & IFF_UP) && ((c.ifr_flags & IFF_LOOPBACK) == 0)) 
+		if ((c.ifr_flags & IFF_UP) && ((c.ifr_flags & IFF_LOOPBACK) == 0))
 		{
 			__u32 t = ((struct sockaddr_in *)&r->ifr_addr)->sin_addr.s_addr;
 			if ((t&255) == 192 && ((t>>8)&255) == 168)
@@ -8563,7 +8564,7 @@ static void read_prefs()
 						delete[] t;
 				}
 
-
+#define FORCE_USERNAME "test_on4"
 #ifdef FORCE_USERNAME
 					char * t = server_username;
 					server_username = new char[strlen(FORCE_USERNAME)+1];
