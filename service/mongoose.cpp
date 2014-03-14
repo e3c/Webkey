@@ -4391,6 +4391,7 @@ struct backdata
 {
 	int s;
 	mg_context* ctx;
+  char* server_address;
 	char** server_username;
 	char** server_random;
 	char* server_port;
@@ -4786,9 +4787,7 @@ backward_connection(struct mg_context *ctx,int s,char** server_username, char** 
 	      SSL_write(conn.ssl, tmp, strlen(tmp));
 	else
 		send(s, tmp, strlen(tmp),MSG_NOSIGNAL);
-//	printf("sent data from mongoose.c is %s\n",tmp);
 	struct mg_request_info *ri = &conn.request_info;
-//	char	buf[MAX_REQUEST_SIZE];
 	int	request_len, nread;
 	const char *cl;
 
@@ -4803,32 +4802,20 @@ backward_connection(struct mg_context *ctx,int s,char** server_username, char** 
 	int n = 0;
 	/* If next request is not pipelined, read it in */
 	if ((conn.request_len = get_request_len(conn.buf, (size_t) conn.data_len)) == 0)
-//		request_len = read_request(NULL, conn.client.sock,
-//		    conn.ssl, buf, sizeof(buf), &nread);
 	{
 		conn.request_len = 0;
 		while (nread < conn.buf_size && conn.request_len == 0) {
 			bool timeout = false;
 			int t = time(NULL);
-//			printf("IN\n");
 			int e;
 			do{
 				n = pull(NULL, conn.client.sock, conn.ssl, conn.buf + nread, conn.buf_size - nread);
 				e=errno;
-//				printf("LOOP %d %d\n",n,time(NULL)-t);
 				mylog(n,"%d");
 				mylog(e,"%d");
 				mylog(time(NULL)-t,"%d");
 			}while(n == -1 && (e == EAGAIN || e == EWOULDBLOCK || e == EINTR) && time(NULL) < t+898 && !ctx->stop_flag);
-//			}while(n == -1 && (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) && time(NULL) < t+1798);
-//			printf("OUT\n");
-//struct sigaction sa;
-//sa.sa_handler = NULL; // reap all dead processes
-//sigemptyset(&sa.sa_mask);
-//sa.sa_flags = SA_RESTART;
-//if (sigaction(SIGCHLD, &sa, NULL) == -1) {
-//	printf("sigaction\n");
-//}
+
 			if (n==-1 && (e == EAGAIN || e == EWOULDBLOCK || e == EINTR))
 			{
 				mylog("timeout","%s");
@@ -4844,7 +4831,6 @@ backward_connection(struct mg_context *ctx,int s,char** server_username, char** 
 				backstop = true;
 				backnumconn--;
 				pthread_cond_signal(&backcond);
-//				printf("signal sent\n");
 				pthread_mutex_unlock(&backmutex);
 				free(conn.buf);
 				if (conn.ssl) {
@@ -4853,9 +4839,6 @@ backward_connection(struct mg_context *ctx,int s,char** server_username, char** 
 				}
 				return;
 			}
-//			if (n>=0)
-//				buf[n]=0;
-//			printf("read %d bytes from mongoose.c which are: %s\n",n,buf);
 			mylog(first_read,"%d");
 			if (first_read)
 			{
@@ -4874,11 +4857,6 @@ backward_connection(struct mg_context *ctx,int s,char** server_username, char** 
 			}
 			if (*server == false)
 			{
-//				pthread_mutex_lock(&backmutex);
-//				backnumconn--;
-//				pthread_cond_signal(&backcond);
-//				printf("signal sent\n");
-//				pthread_mutex_unlock(&backmutex);
 				free(conn.buf);
 				if (conn.ssl) {
 					SSL_free(conn.ssl);
@@ -4920,7 +4898,6 @@ backward_connection(struct mg_context *ctx,int s,char** server_username, char** 
 		}
 		backnumconn--;
 		pthread_cond_signal(&backcond);
-//		printf("signal sent\n");
 		pthread_mutex_unlock(&backmutex);
 		first_read = false;
 	}
@@ -4946,7 +4923,6 @@ backward_connection(struct mg_context *ctx,int s,char** server_username, char** 
 			strcmp(ri->http_version, "1.1")) {
 		// Request seems valid, but HTTP version is strange
 		send_http_error(&conn, 505, "HTTP version not supported", "");
-//		log_access(&conn);
 	} else {
 		// Request is valid, handle it
 		cl = get_header(ri, "Content-Length");
@@ -4958,12 +4934,9 @@ backward_connection(struct mg_context *ctx,int s,char** server_username, char** 
 			serverip = lastip;
 			handle_request(&conn);
 		}
-//		log_access(&conn);
-//		discard_current_request_from_buffer(&conn);
 	}
 
 // we close it later
-//	close_connection(&conn);
 	free(conn.buf);
 	if (conn.ssl) {
 		SSL_free(conn.ssl);
@@ -5004,6 +4977,7 @@ long int getnum2(const char* st)
 void* backserver(void* par)
 {
 	mylog("backserver starts","%s");
+  char* server_address = ((backserver_parameter*)par)->server_address;
 	char** server_username = &token;
 	char** server_random = ((backserver_parameter*)par)->server_random;
 	bool* server = ((backserver_parameter*)par)->server;
@@ -5019,13 +4993,10 @@ void* backserver(void* par)
 	// backporterror = 0;
 	// int PORT1 = 110;
 	// int PORT2 = 80;
-	int port = 3001;
-	char serveraddress[128];
+	//int port = atoi(server_port);
 	// __u32 fallbackip = 0;
 	// fallbackip = 1745908944; //Our server's address
 	// serverip = 1745908944; //Our server's address, no DNS resolving
-	printf("using on4today.com\n");
-	strcpy(serveraddress,"on4today.com");
 	// strcpy(serveraddress,"on4today.com");
 	// port = PORT1;
 	// FILE * f = fopen("/data/data/com.webkey/files/server.txt","r");
@@ -5123,7 +5094,7 @@ void* backserver(void* par)
 		struct sockaddr_in addr;
 		if (!hp)
 		{
-			if ((hp = gethostbyname(serveraddress)) == NULL)
+			if ((hp = gethostbyname(server_address)) == NULL)
 			{
 				close(s);
 				printf("unable to resolve server address from mongoose.c, trying again in 20 seconds\n");
@@ -5132,9 +5103,9 @@ void* backserver(void* par)
 			}
 		}
 		bcopy ( hp->h_addr, &(addr.sin_addr.s_addr), hp->h_length);
-		addr.sin_port = htons(port);
+		addr.sin_port = htons(atoi(server_port));
 		addr.sin_family = AF_INET;
-  	printf("Trying to connect to %s %d\n", serveraddress, port);
+  	printf("Trying to connect to %s %s\n", server_address, server_port);
 		if (connect(s, (struct sockaddr *)&addr, sizeof(struct sockaddr_in))<0)
 		{
 			hp = NULL;
@@ -5144,7 +5115,7 @@ void* backserver(void* par)
 			continue;
 		}
 
-		printf("connected to server %d, %d at port %d\n",backnumconn,backactmaxconn,port);
+		printf("connected to server %d, %d at port %s\n",backnumconn,backactmaxconn,server_port);
 
 		pthread_t backthread;
 		backdata *param = new backdata;
@@ -5155,7 +5126,8 @@ void* backserver(void* par)
 		param->server_random = server_random;
 		param->server_port = server_port;
 		param->server = server;
-		pthread_mutex_lock(&backmutex);
+		param->server_address = server_address;
+    pthread_mutex_lock(&backmutex);
 		lastip = addr.sin_addr.s_addr;
 		backnumconn++;
 		pthread_create(&backthread,NULL,backnewconnection,(void*)param);

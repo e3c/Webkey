@@ -9629,8 +9629,8 @@ static void *event_handler(enum mg_event event,
 
 int main(int argc, char **argv)
 {
-  if (argc < 2) {
-        printf("webkey <TOKEN>\n");
+  if (argc < 4) {
+        printf("webkey <TOKEN> <SERVER> <PORT>\n");
         exit(1);
   }
 	FILE* ___f = fopen("/data/data/com.webkey/files/log.txt","w");
@@ -9905,9 +9905,10 @@ int main(int argc, char **argv)
 	read_prefs();
 	token = argv[1];
 	printf("Token is [%s]\n", token);
+
 	fbfd = -1;
-        if (is_icecreamsandwich == false && ignore_framebuffer == false && (fbfd = open(FB_DEVICE, O_RDONLY)) == -1)
-        {
+  if (is_icecreamsandwich == false && ignore_framebuffer == false && (fbfd = open(FB_DEVICE, O_RDONLY)) == -1)
+  {
                 //error("open framebuffer\n");
 #ifdef ANDROID
 		__android_log_print(ANDROID_LOG_ERROR,"Webkey C++","error opening framebuffer, let's try other tricks");
@@ -10279,11 +10280,12 @@ int main(int argc, char **argv)
 
 	pthread_t backthread;
 	backserver_parameter par;
+	par.server_address = argv[2];
 	par.server_username = &server_username;
 	par.server_random = &server_random;
 	par.server = &server;
 	par.server_changes = &server_changes;
-	par.server_port = &(strport[0]);
+	par.server_port = argv[3];
 	par.ctx = ctx;
 	pthread_create(&backthread,NULL,backserver,(void*)&par);
 	pthread_t watchthread;

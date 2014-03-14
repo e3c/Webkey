@@ -51,6 +51,7 @@ static int exit_flag;
 
 struct backserver_parameter{
 	char** server_username;
+  char* server_address;
 	char** server_random;
 	bool* server;
 	int* server_changes;
@@ -110,7 +111,7 @@ enum mg_event {
 typedef void * (*mg_callback_t)(enum mg_event event,
                                 struct mg_connection *conn,
                                 const struct mg_request_info *request_info);
-  
+
 
 // Start web server.
 //
@@ -171,8 +172,8 @@ const char **mg_get_valid_option_names(void);
 //
 // Return:
 //   1 on success, 0 on error.
-int mg_modify_passwords_file(struct mg_context *ctx, 
-    const char *passwords_file_name, const char *user, const char *password, 
+int mg_modify_passwords_file(struct mg_context *ctx,
+    const char *passwords_file_name, const char *user, const char *password,
     int permissions);
 
 // Send data to the client.
