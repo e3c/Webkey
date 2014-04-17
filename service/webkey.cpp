@@ -1013,16 +1013,16 @@ void send_ok(struct mg_connection *conn, const char* extra = NULL,int size = 0)
 	if (size)
 	{
 		if (extra)
-			mg_printf(conn,"HTTP/1.1 200 OK\r\nCache-Control: no-store, no-cache, must-revalidate\r\nCache-Control: post-check=0, pre-check=0\r\nPragma: no-cache\r\nConnection: close\r\nContent-Length: %d\r\n%s\r\n\r\n",size,extra);
+			mg_printf(conn,"HTTP/1.1 200 OK\r\nCache-Control: no-store, no-cache, must-revalidate\r\nCache-Control: post-check=0, pre-check=0\r\nPragma: no-cache\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\nContent-Length: %d\r\n%s\r\n\r\n",size,extra);
 		else
-			mg_printf(conn,"HTTP/1.1 200 OK\r\nCache-Control: no-store, no-cache, must-revalidate\r\nCache-Control: post-check=0, pre-check=0\r\nPragma: no-cache\r\nConnection: close\r\nContent-Length: %d\r\n\r\n",size);
+			mg_printf(conn,"HTTP/1.1 200 OK\r\nCache-Control: no-store, no-cache, must-revalidate\r\nCache-Control: post-check=0, pre-check=0\r\nPragma: no-cache\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\nContent-Length: %d\r\n\r\n",size);
 	}
 	else
 	{
 		if (extra)
-			mg_printf(conn,"HTTP/1.1 200 OK\r\nCache-Control: no-store, no-cache, must-revalidate\r\nCache-Control: post-check=0, pre-check=0\r\nPragma: no-cache\r\nConnection: close\r\n%s\r\n\r\n",extra);
+			mg_printf(conn,"HTTP/1.1 200 OK\r\nCache-Control: no-store, no-cache, must-revalidate\r\nCache-Control: post-check=0, pre-check=0\r\nPragma: no-cache\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n%s\r\n\r\n",extra);
 		else
-			mg_printf(conn,"HTTP/1.1 200 OK\r\nCache-Control: no-store, no-cache, must-revalidate\r\nCache-Control: post-check=0, pre-check=0\r\nPragma: no-cache\r\nConnection: close\r\n\r\n");
+			mg_printf(conn,"HTTP/1.1 200 OK\r\nCache-Control: no-store, no-cache, must-revalidate\r\nCache-Control: post-check=0, pre-check=0\r\nPragma: no-cache\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n");
 	}
 }
 void clear(bool exit = true)
@@ -5973,9 +5973,9 @@ screenshot(struct mg_connection *conn,
 	if (asfile)
 	{
 		if (png)
-			send_ok(conn,"Content-Type: image/png; charset=UTF-8\r\nContent-Disposition: attachment;filename=screenshot.png",lSize);
+			send_ok(conn,"Content-Type: image/png; charset=UTF-8\r\nAccess-Control-Allow-Origin: *\r\nContent-Disposition: attachment;filename=screenshot.png",lSize);
 		else
-			send_ok(conn,"Content-Type: image/jpeg; charset=UTF-8\r\nContent-Disposition: attachment;filename=screenshot.jpg",lSize);
+			send_ok(conn,"Content-Type: image/jpeg; charset=UTF-8\r\nAccess-Control-Allow-Origin: *\r\nContent-Disposition: attachment;filename=screenshot.jpg",lSize);
 	}
 	mg_write(conn,filebuffer,lSize);
 	fclose(f);

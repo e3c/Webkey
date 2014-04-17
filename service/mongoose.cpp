@@ -965,6 +965,7 @@ static void send_http_error(struct mg_connection *conn, int status,
     mg_printf(conn, "HTTP/1.1 %d %s\r\n"
               "Content-Type: text/plain\r\n"
               "Content-Length: %d\r\n"
+              "Access-Control-Allow-Origin: *\r\n"
               "Connection: %s\r\n\r\n", status, reason, len,
               suggest_connection_header(conn));
     conn->num_bytes_sent += mg_printf(conn, "%s", buf);
@@ -2419,6 +2420,7 @@ static void send_authorization_request(struct mg_connection *conn) {
   conn->request_info.status_code = 401;
   (void) mg_printf(conn,
       "HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n"
+      "Access-Control-Allow-Origin: *\r\n"
       "WWW-Authenticate: Digest qop=\"auth\", "
       "realm=\"%s\", nonce=\"%lu_%lu\"\r\n\r\n",
       conn->ctx->config[AUTHENTICATION_DOMAIN],
@@ -2628,6 +2630,7 @@ static void handle_directory_request(struct mg_connection *conn,
 
   (void) mg_printf(conn, "%s",
       "HTTP/1.1 200 OK\r\n"
+      "Access-Control-Allow-Origin: *\r\n"
       "Connection: close\r\n"
       "Content-Type: text/html; charset=utf-8\r\n\r\n");
 
@@ -2792,6 +2795,7 @@ static void handle_file_request(struct mg_connection *conn, const char *path,
 	      "Content-Type: %.*s\r\n"
 	      "Content-Length: %" INT64_FMT "\r\n"
 	      "Connection: %s\r\n"
+	      "Access-Control-Allow-Origin: *\r\n"
 	      "Accept-Ranges: bytes\r\n"
 	      "%s\r\n",
 	      conn->request_info.status_code, msg, date, lm, etag,
@@ -2803,6 +2807,7 @@ static void handle_file_request(struct mg_connection *conn, const char *path,
 	      "Last-Modified: %s\r\n"
 	      "Etag: \"%s\"\r\n"
 	      "Content-Type: %.*s\r\n"
+	      "Access-Control-Allow-Origin: *\r\n"
 	      "Connection: %s\r\n"
 	      "\r\n",
 	      conn->request_info.status_code, msg, date, lm, etag,
@@ -2952,7 +2957,7 @@ static int forward_body_data(struct mg_connection *conn, FILE *fp,
     send_http_error(conn, 417, "Expectation Failed", "");
   } else {
     if (expect != NULL) {
-      (void) mg_printf(conn, "%s", "HTTP/1.1 100 Continue\r\n\r\n");
+      (void) mg_printf(conn, "%s", "HTTP/1.1 100 Continue\r\nAccess-Control-Allow-Origin: *\r\n\r\n");
     }
 
     buffered = conn->buf + conn->request_len;
@@ -3214,7 +3219,7 @@ static void handle_cgi_request(struct mg_connection *conn, const char *prog) {
   // Make up and send the status line
   status = get_header(&ri, "Status");
   conn->request_info.status_code = status == NULL ? 200 : atoi(status);
-  (void) mg_printf(conn, "HTTP/1.1 %d OK\r\n", conn->request_info.status_code);
+  (void) mg_printf(conn, "HTTP/1.1 %d OK\r\nAccess-Control-Allow-Origin: *\r\n", conn->request_info.status_code);
 
   // Send headers
   for (i = 0; i < ri.num_headers; i++) {
@@ -3297,7 +3302,7 @@ static void put_file(struct mg_connection *conn, const char *path) {
   conn->request_info.status_code = mg_stat(path, &st) == 0 ? 200 : 201;
 
   if ((rc = put_dir(path)) == 0) {
-    mg_printf(conn, "HTTP/1.1 %d OK\r\n\r\n", conn->request_info.status_code);
+    mg_printf(conn, "HTTP/1.1 %d OK\r\nAccess-Control-Allow-Origin: *\r\n\r\n", conn->request_info.status_code);
   } else if (rc == -1) {
     send_http_error(conn, 500, http_500_error,
         "put_dir(%s): %s", path, strerror(ERRNO));
@@ -3314,7 +3319,7 @@ static void put_file(struct mg_connection *conn, const char *path) {
       (void) fseeko(fp, (off_t) r1, SEEK_SET);
     }
     if (forward_body_data(conn, fp, INVALID_SOCKET, NULL))
-      (void) mg_printf(conn, "HTTP/1.1 %d OK\r\n\r\n",
+      (void) mg_printf(conn, "HTTP/1.1 %d OK\r\nAccess-Control-Allow-Origin: *\r\n\r\n",
           conn->request_info.status_code);
     (void) fclose(fp);
   }
@@ -3456,7 +3461,7 @@ static void handle_ssi_file_request(struct mg_connection *conn,
   } else {
     set_close_on_exec(fileno(fp));
     mg_printf(conn, "HTTP/1.1 200 OK\r\n"
-              "Content-Type: text/html\r\nConnection: %s\r\n\r\n",
+              "Content-Type: text/html\r\nAccess-Control-Allow-Origin: *\r\nConnection: %s\r\n\r\n",
               suggest_connection_header(conn));
     send_ssi_file(conn, path, fp, 0);
     (void) fclose(fp);
@@ -3488,7 +3493,7 @@ static void handle_request(struct mg_connection *conn) {
 			{
 				if (!((h[i]<='9' && h[i] >= '0') || h[i]=='.' || h[i] ==':'))
 				{
-					mg_printf(conn,"HTTP/1.1 200 OK\r\nConnection: close\r\n\r\n");
+					mg_printf(conn,"HTTP/1.1 200 OK\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n");
 					return;
 				}
 				i++;
@@ -3597,6 +3602,7 @@ static void handle_request(struct mg_connection *conn) {
   } else if (st.is_directory && ri->uri[uri_len - 1] != '/') {
     (void) mg_printf(conn,
         "HTTP/1.1 301 Moved Permanently\r\n"
+        "Access-Control-Allow-Origin: *\r\n"
         "Location: %s/\r\n\r\n", ri->uri);
   } else if (st.is_directory &&
              !substitute_index_file(conn, path, sizeof(path), &st)) {
