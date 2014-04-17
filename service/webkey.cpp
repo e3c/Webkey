@@ -3022,9 +3022,9 @@ static void
 touch(struct mg_connection *conn,
                 const struct mg_request_info *ri, void *data)
 {
-//	printf("%s\n",ri->uri);
-	if (ri->permissions != PERM_ROOT)
-		return;
+	// printf("%s\n",ri->uri);
+	// if (ri->permissions != PERM_ROOT)
+		// return;
 	lock_wakelock();
 	access_log(ri,"touch inject");
 	char* s = ri->uri;
@@ -3958,8 +3958,8 @@ static void
 key(struct mg_connection *conn,
                 const struct mg_request_info *ri, void *data)
 {
-	if (ri->permissions != PERM_ROOT)
-		return;
+	// if (ri->permissions != PERM_ROOT)
+		// return;
 	lock_wakelock();
 	access_log(ri,"key inject");
 	send_ok(conn);
@@ -9444,11 +9444,15 @@ static void *event_handler(enum mg_event event,
   fflush(NULL);
   //access_log(request_info,"log in");
   void *processed = (void*)1;
-  if (urlcompare(request_info->uri, "/screenshot.*"))
+  if (urlcompare(request_info->uri, "/screenshot.*")) {
 	screenshot(conn, request_info, NULL);
-  else
+  }else if (urlcompare(request_info->uri, "/injkey*")) {
+	key(conn, request_info, NULL);
+  } else if (urlcompare(request_info->uri, "/touch*")) {
+	touch(conn, request_info, NULL);
+  } else {
 	processed = NULL;
-
+  }
 //   if (urlcompare(request_info->uri, "/") || urlcompare(request_info->uri,"/index.html"))
 // 	getfile(conn, request_info, NULL);
 //   else if (urlcompare(request_info->uri, "/phone.html"))
