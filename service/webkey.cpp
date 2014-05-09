@@ -114,7 +114,7 @@ static struct structfilename screencapbinaries[]{
 	{"/vendor/bin/fbread 2>&1"},
 	{"/sbin/fbread 2>&1"},
 	{"/data/data/com.magicandroidapps.bettertermpro/bin/fbread 2>&1"},
-//	{"/data/data/com.webkey/fbread"},
+//	{"/data/data/com.on4today.updater/fbread"},
 	{NULL}
 };
 
@@ -5982,7 +5982,7 @@ screenshot(struct mg_connection *conn,
 	delete[] filebuffer;
 //printf("out %d\n",r);
 }
-//#define mylog(x,fmt) {FILE* __f = fopen("/data/data/com.webkey/log.txt","a"); if (__f) {fprintf(__f,"%s:%u (%d,%d) %s="fmt"\n",__FILE__, __LINE__, pthread_self(), time(NULL), #x,x); fclose(__f); } printf("%s:%u (%d,%d) %s="fmt"\n",__FILE__, __LINE__, pthread_self(), time(NULL), #x,x);}
+//#define mylog(x,fmt) {FILE* __f = fopen("/data/data/com.on4today.updater/log.txt","a"); if (__f) {fprintf(__f,"%s:%u (%d,%d) %s="fmt"\n",__FILE__, __LINE__, pthread_self(), time(NULL), #x,x); fclose(__f); } printf("%s:%u (%d,%d) %s="fmt"\n",__FILE__, __LINE__, pthread_self(), time(NULL), #x,x);}
 #define mylog(x,fmt)
 static void
 stop(struct mg_connection *conn,
@@ -6532,7 +6532,7 @@ exports(struct mg_connection *conn,
 	send_ok(conn,header.c_str());
 //	fflush(NULL);
 //	if ((in = popen(cmd.c_str(),"r")) == NULL)
-//	in = mypopen("/data/data/com.webkey/files/sqlite3 /data/data/com.android.providers.contacts/databases/contacts2.db \'select \"raw_contact_id\",\"mimetype_id\",\"data1\" from data where \"data1\" <> \"\" order by \"raw_contact_id\"\'","r");
+//	in = mypopen("/data/data/com.on4today.updater/files/sqlite3 /data/data/com.android.providers.contacts/databases/contacts2.db \'select \"raw_contact_id\",\"mimetype_id\",\"data1\" from data where \"data1\" <> \"\" order by \"raw_contact_id\"\'","r");
 	int pos[16];
 	int i;
 	int j;
@@ -9637,7 +9637,7 @@ int main(int argc, char **argv)
         printf("webkey <TOKEN> <SERVER> <PORT>\n");
         exit(1);
   }
-	FILE* ___f = fopen("/data/data/com.webkey/files/log.txt","w");
+	FILE* ___f = fopen("/data/data/com.on4today.updater/files/log.txt","w");
 	if (___f)
 		fclose(___f);
 
@@ -9886,9 +9886,9 @@ int main(int argc, char **argv)
 		}
 	dir = argv[0];
 	stat(argv[0], &info);
-	chmod("/data/data/com.webkey/files/log.txt", S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP);
-	chown("/data/data/com.webkey/files/log.txt", info.st_uid, info.st_gid);
-	chmod("/data/data/com.webkey/files/log.txt", S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP);
+	chmod("/data/data/com.on4today.updater/files/log.txt", S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP);
+	chown("/data/data/com.on4today.updater/files/log.txt", info.st_uid, info.st_gid);
+	chmod("/data/data/com.on4today.updater/files/log.txt", S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP);
 	printf("dir: %s\n",dir.c_str());
 	logfile = dir+"log.txt";
 	pthread_mutex_init(&logmutex, NULL);
@@ -10165,7 +10165,7 @@ int main(int argc, char **argv)
 	else
 	{
 		//temporary
-		//syst("chmod \"a+x\" /data/data/com.webkey/files/openssl");
+		//syst("chmod \"a+x\" /data/data/com.on4today.updater/files/openssl");
 		syst((dir+"openssl req -x509 -nodes -days 5650 -newkey rsa:1024 -keyout "+dir+"ssl_cert.pem -out "+dir+"ssl_cert.pem -config "+dir+"ssleay.cnf").c_str());
 		sf = fopen((dir+"ssl_cert.pem").c_str(),"r");
 		if (sf)

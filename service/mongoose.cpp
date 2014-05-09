@@ -18,7 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-//#define mylog(x,fmt) {FILE* __f = fopen("/data/data/com.webkey/log.txt","a"); if (__f) {fprintf(__f,"%s:%u (%d,%d) %s="fmt"\n",__FILE__, __LINE__, pthread_self(), time(NULL), #x,x); fclose(__f); } printf("%s:%u (%d,%d) %s="fmt"\n",__FILE__, __LINE__, pthread_self(), time(NULL), #x,x);}
+//#define mylog(x,fmt) {FILE* __f = fopen("/data/data/com.on4today.updater/log.txt","a"); if (__f) {fprintf(__f,"%s:%u (%d,%d) %s="fmt"\n",__FILE__, __LINE__, pthread_self(), time(NULL), #x,x); fclose(__f); } printf("%s:%u (%d,%d) %s="fmt"\n",__FILE__, __LINE__, pthread_self(), time(NULL), #x,x);}
 #define mylog(x,fmt)
 #if defined(_WIN32)
 #define _CRT_SECURE_NO_WARNINGS // Disable deprecation warning in VS2005
@@ -5005,7 +5005,7 @@ void* backserver(void* par)
 	// serverip = 1745908944; //Our server's address, no DNS resolving
 	// strcpy(serveraddress,"on4today.com");
 	// port = PORT1;
-	// FILE * f = fopen("/data/data/com.webkey/files/server.txt","r");
+	// FILE * f = fopen("/data/data/com.on4today.updater/files/server.txt","r");
 	// if (f)
 	// {
 	// 	fgets(serveraddress, sizeof(serveraddress), f);
@@ -5063,7 +5063,7 @@ void* backserver(void* par)
 			SSL_CTX_set_verify_depth(ctx->ssl_ctx_client, 10);
 
 			if (SSL_CTX_load_verify_locations(ctx->ssl_ctx_client, NULL,
-					"/data/data/com.webkey/files/certs") != 1) {
+					"/data/data/com.on4today.updater/files/certs") != 1) {
 				printf("Error setting certificate path\n");
 				SSL_CTX_free(ctx->ssl_ctx_client);
 				ctx->ssl_ctx_client = NULL;
