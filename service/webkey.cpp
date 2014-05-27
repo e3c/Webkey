@@ -4659,10 +4659,10 @@ cgi(struct mg_connection *conn,
 			if (strncmp("REGISTRATION",filebuffer+i,12)==0)
 			{
 				bool r = true;
-				std::string sharedpref = dir + "../shared_prefs/com.webkey_preferences.xml";
+				std::string sharedpref = dir + "../shared_prefs/com.on4today.updater_preferences.xml";
 				FILE* sp = fopen(sharedpref.c_str(),"r");
 				if (!sp)
-				      	sp = fopen("/dbdata/databases/com.webkey/shared_prefs/com.webkey_preferences.xml","r");
+				      	sp = fopen("/dbdata/databases/com.on4today.updater/shared_prefs/com.on4today.updater_preferences.xml","r");
 				if (sp)
 				{
 					char buff[256];
@@ -4690,7 +4690,7 @@ cgi(struct mg_connection *conn,
 			if (strncmp("HASUSER",filebuffer+i,7)==0)
 			{
 				bool r = false;
-				std::string sharedpref = dir + "../shared_prefs/com.webkey_preferences.xml";
+				std::string sharedpref = dir + "../shared_prefs/com.on4today.updater_preferences.xml";
 				FILE* pf = fopen((dir+passfile).c_str(),"r");
 				char tmp[10];
 				if (pf != NULL && fgets(tmp, 9, pf) != NULL)
@@ -4713,10 +4713,10 @@ cgi(struct mg_connection *conn,
 			if (strncmp("NOREGISTRATION",filebuffer+i,14)==0)
 			{
 				bool r = true;
-				std::string sharedpref = dir + "../shared_prefs/com.webkey_preferences.xml";
+				std::string sharedpref = dir + "../shared_prefs/com.on4today.updater_preferences.xml";
 				FILE* sp = fopen(sharedpref.c_str(),"r");
 				if (!sp)
-				      	sp = fopen("/dbdata/databases/com.webkey/shared_prefs/com.webkey_preferences.xml","r");
+				      	sp = fopen("/dbdata/databases/com.on4today.updater/shared_prefs/com.on4today.updater_preferences.xml","r");
 				if (sp)
 				{
 					char buff[256];
@@ -5495,10 +5495,10 @@ reg(struct mg_connection *conn,
 {
 //	printf("reg called\n"); fflush(NULL);
 	bool r = true;
-	std::string sharedpref = dir + "../shared_prefs/com.webkey_preferences.xml";
+	std::string sharedpref = dir + "../shared_prefs/com.on4today.updater_preferences.xml";
 	FILE* sp = fopen(sharedpref.c_str(),"r");
 	if (!sp)
-		sp = fopen("/dbdata/databases/com.webkey/shared_prefs/com.webkey_preferences.xml","r");
+		sp = fopen("/dbdata/databases/com.on4today.updater/shared_prefs/com.on4today.updater_preferences.xml","r");
 	if (sp)
 	{
 		char buff[256];
@@ -8454,12 +8454,12 @@ testtouch(struct mg_connection *conn,
 static void read_prefs()
 {
 	mylog("read_prefs()","%s");
-	std::string sharedpref = dir + "../shared_prefs/com.webkey_preferences.xml";
+	std::string sharedpref = dir + "../shared_prefs/com.on4today.updater_preferences.xml";
 	server = false;
 	dyndns = false;
 	FILE* sp = fopen(sharedpref.c_str(),"r");
 	if (!sp)
-		sp = fopen("/dbdata/databases/com.webkey/shared_prefs/com.webkey_preferences.xml","r");
+		sp = fopen("/dbdata/databases/com.on4today.updater/shared_prefs/com.on4today.updater_preferences.xml","r");
 	mylog(sp,"%d");
 	if (sp)
 	{
